@@ -115,22 +115,22 @@ function PlayRoomContent() {
       <main className="mx-auto max-w-lg px-4 py-6">
         <header className="mb-4 flex items-center justify-between gap-3">
           <div>
-            <p className="text-sm font-semibold text-violet-600">{displayName}</p>
-            <h1 className="text-2xl font-black text-slate-50">Lyric Victory</h1>
+            <p className="text-sm font-semibold text-ink">{displayName}</p>
+            <h1 className="font-display text-2xl font-black text-[#f4ede3]">Lyric Victory</h1>
           </div>
           <RoomCodeBadge code={roomCode} />
         </header>
 
         <div className="mb-4 flex items-center justify-between">
           {state ? <PhaseBadge phase={state.phase} /> : null}
-          <span className={`text-sm ${connected ? "text-emerald-600" : "text-red-500"}`}>
+          <span className={`text-sm ${connected ? "text-success" : "text-red-400"}`}>
             {connected ? "Connected" : "Reconnecting…"}
           </span>
         </div>
 
         {state?.announcement ? (
           <Panel className="mb-4">
-            <p className="text-center text-sm font-medium text-violet-700">{state.announcement}</p>
+            <p className="text-center text-sm font-medium text-ink">{state.announcement}</p>
           </Panel>
         ) : null}
 
@@ -140,7 +140,7 @@ function PlayRoomContent() {
           </Panel>
         ) : (
           <Panel className="mb-4">
-            <p className="text-center text-sm text-slate-400">
+            <p className="text-center text-sm text-[#c4b5a0]">
               {state?.phase === "lobby"
                 ? "Waiting for the host to start the game…"
                 : "Waiting for the next round…"}
@@ -155,7 +155,7 @@ function PlayRoomContent() {
               endsAt={state.beat.endsAt}
               durationMs={state.beat.durationMs}
             />
-            <p className="my-3 text-sm text-slate-400">
+            <p className="my-3 text-sm text-[#c4b5a0]">
               Submit whole words during each beat. All correct matches reveal on the TV board.
             </p>
             <div className="flex gap-2">
@@ -189,7 +189,7 @@ function PlayRoomContent() {
         ) : null}
 
         {feedback || submitError ? (
-          <p className="rounded-xl bg-violet-950/50 px-4 py-3 text-sm text-violet-200 ring-1 ring-violet-500/20">
+          <p className="rounded-xl bg-surface-muted px-4 py-3 text-sm text-ink ring-1 ring-ink/20">
             {submitError ?? feedback}
           </p>
         ) : null}

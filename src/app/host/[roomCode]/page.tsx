@@ -15,7 +15,6 @@ import {
   SecondaryButton,
 } from "@/components/game-ui";
 import { getStoredHostToken, useHostGame } from "@/hooks/useGameSocket";
-import { countBlanks } from "@/lib/lyrics";
 import type { SongSearchResult } from "@/lib/types";
 
 export default function HostRoomPage() {
@@ -42,10 +41,6 @@ export default function HostRoomPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SongSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
-  const [customTitle, setCustomTitle] = useState("");
-  const [customArtist, setCustomArtist] = useState("");
-  const [customTemplate, setCustomTemplate] = useState("Hey {6}, I just met a {4}\nAnd {4} is {7} crazy");
-  const [customAnswers, setCustomAnswers] = useState("jude, girl, this, getting");
   const [announcementDraft, setAnnouncementDraft] = useState("");
   const [loadingLyrics, setLoadingLyrics] = useState(false);
 
@@ -93,32 +88,6 @@ export default function HostRoomPage() {
     }
   };
 
-  const addCustomRound = async () => {
-    setActionError(null);
-    try {
-      const answers = customAnswers
-        .split(",")
-        .map((value) => value.trim().toLowerCase())
-        .filter(Boolean);
-      const blankCount = countBlanks(customTemplate);
-      if (answers.length !== blankCount) {
-        setActionError(`Expected ${blankCount} comma-separated answers, got ${answers.length}.`);
-        return;
-      }
-      const result = await addRound({
-        title: customTitle.trim() || "Untitled Song",
-        artist: customArtist.trim() || "Unknown Artist",
-        template: customTemplate,
-        answers,
-      });
-      if (!result.ok) {
-        setActionError(result.error ?? "Could not add custom round.");
-      }
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Invalid custom round.");
-    }
-  };
-
   const runHostAction = async (action: () => Promise<{ ok: boolean; error?: string }>) => {
     setActionError(null);
     const result = await action();
@@ -132,7 +101,7 @@ export default function HostRoomPage() {
       <MusicBackdrop>
         <main className="mx-auto max-w-lg px-6 py-16">
           <Panel title="Host session expired">
-            <p className="mb-4 text-sm text-slate-400">
+            <p className="mb-4 text-sm text-[#c4b5a0]">
               Open this room from the same browser that created it, or start a new game.
             </p>
             <Link href="/host">
@@ -149,13 +118,13 @@ export default function HostRoomPage() {
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
         <header className="mb-6 flex flex-wrap items-center justify-between gap-4">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-widest text-violet-500">Host Console</p>
-            <h1 className="text-3xl font-black text-slate-50">Lyric Victory</h1>
+            <p className="text-sm font-semibold uppercase tracking-widest text-ink">Host Console</p>
+            <h1 className="font-display text-3xl font-bold text-[#f4ede3]">Lyric Victory</h1>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <RoomCodeBadge code={roomCode} />
             {state ? <PhaseBadge phase={state.phase} /> : null}
-            <span className={`text-sm font-medium ${connected ? "text-emerald-600" : "text-red-500"}`}>
+            <span className={`text-sm font-medium ${connected ? "text-success" : "text-red-400"}`}>
               {connected ? "Live" : "Reconnecting…"}
             </span>
           </div>
@@ -199,68 +168,33 @@ export default function HostRoomPage() {
                         type="button"
                         onClick={() => importSong(song)}
                         disabled={loadingLyrics}
-                        className="flex w-full items-start justify-between rounded-2xl bg-surface-muted px-4 py-3 text-left transition hover:bg-violet-950/50 ring-1 ring-violet-500/15"
+                        className="flex w-full items-start justify-between rounded-2xl bg-surface-muted px-4 py-3 text-left transition hover:bg-[#443a2e] ring-1 ring-ink/15"
                       >
                         <span>
-                          <span className="block font-semibold text-slate-100">{song.title}</span>
-                          <span className="text-sm text-slate-500">
+                          <span className="block font-semibold text-[#f4ede3]">{song.title}</span>
+                          <span className="text-sm text-[#8a7d6b]">
                             {song.artist} · {song.album}
                           </span>
                         </span>
-                        <span className="text-sm font-semibold text-violet-600">Add</span>
+                        <span className="text-sm font-semibold text-ink">Add</span>
                       </button>
                     ))}
                   </div>
                 </CollapsiblePanel>
 
-                <CollapsiblePanel title="Custom Lyrics" defaultOpen={false}>
-                  <p className="mb-4 text-sm text-slate-400">
-                    Use <code className="rounded bg-surface-muted px-1 text-violet-200">{`{4}`}</code> for a 4-letter word.
-                    Visible words in your paste are auto-hidden — only letter counts show on the board.
-                    Answers are comma-separated in blank order.
-                  </p>
-                  <div className="grid gap-3">
-                    <input
-                      value={customTitle}
-                      onChange={(event) => setCustomTitle(event.target.value)}
-                      placeholder="Song title"
-                      className="input-dark w-full rounded-2xl px-4 py-3 text-sm"
-                    />
-                    <input
-                      value={customArtist}
-                      onChange={(event) => setCustomArtist(event.target.value)}
-                      placeholder="Artist"
-                      className="input-dark w-full rounded-2xl px-4 py-3 text-sm"
-                    />
-                    <textarea
-                      value={customTemplate}
-                      onChange={(event) => setCustomTemplate(event.target.value)}
-                      rows={6}
-                      className="input-dark w-full rounded-2xl px-4 py-3 font-mono text-sm"
-                    />
-                    <input
-                      value={customAnswers}
-                      onChange={(event) => setCustomAnswers(event.target.value)}
-                      placeholder="Answers, comma separated"
-                      className="input-dark w-full rounded-2xl px-4 py-3 text-sm"
-                    />
-                    <PrimaryButton onClick={addCustomRound}>Add Custom Round</PrimaryButton>
-                  </div>
-                </CollapsiblePanel>
-
                 <CollapsiblePanel title="Queued Rounds" defaultOpen>
                   {(state?.pendingRounds.length ?? 0) === 0 ? (
-                    <p className="text-sm text-slate-500">No rounds queued yet.</p>
+                    <p className="text-sm text-[#8a7d6b]">No rounds queued yet.</p>
                   ) : (
                     <div className="space-y-2">
                       {state?.pendingRounds.map((round, index) => (
                         <div
                           key={`${round.title}-${index}`}
-                          className="flex items-center justify-between rounded-2xl bg-surface-muted px-4 py-3 ring-1 ring-violet-500/15"
+                          className="flex items-center justify-between rounded-2xl bg-surface-muted px-4 py-3 ring-1 ring-ink/15"
                         >
                           <span>
-                            <span className="block font-semibold text-slate-100">{round.title}</span>
-                            <span className="text-sm text-slate-500">{round.artist}</span>
+                            <span className="block font-semibold text-[#f4ede3]">{round.title}</span>
+                            <span className="text-sm text-[#8a7d6b]">{round.artist}</span>
                           </span>
                           <SecondaryButton onClick={() => runHostAction(() => removeRound(index))}>
                             Remove
@@ -285,8 +219,8 @@ export default function HostRoomPage() {
               <CollapsiblePanel title={`Round ${state.currentRoundIndex + 1} Board`} defaultOpen>
                 <div className="mb-4 flex flex-wrap items-center gap-3">
                   <div>
-                    <p className="text-xl font-bold text-slate-50">{state.currentRound.title}</p>
-                    <p className="text-sm text-slate-500">{state.currentRound.artist}</p>
+                    <p className="text-xl font-bold text-[#f4ede3]">{state.currentRound.title}</p>
+                    <p className="text-sm text-[#8a7d6b]">{state.currentRound.artist}</p>
                   </div>
                 </div>
                 <LyricBoard lines={state.currentRound.lines} />
@@ -350,8 +284,8 @@ export default function HostRoomPage() {
                     key={player.id}
                     className={`rounded-full px-3 py-1 text-sm font-medium ${
                       player.connected
-                        ? "bg-emerald-100 text-emerald-700"
-                        : "bg-slate-100 text-slate-500"
+                        ? "bg-success/15 text-success ring-1 ring-success/30"
+                        : "bg-surface-muted text-[#8a7d6b]"
                     }`}
                   >
                     {player.displayName}
@@ -362,7 +296,7 @@ export default function HostRoomPage() {
 
             {state?.answerKey.length ? (
               <CollapsiblePanel title="Answer Key (host only)" defaultOpen>
-                <p className="font-mono text-sm text-slate-400">{state.answerKey.join(", ")}</p>
+                <p className="font-mono text-sm text-[#c4b5a0]">{state.answerKey.join(", ")}</p>
               </CollapsiblePanel>
             ) : null}
 
@@ -370,10 +304,10 @@ export default function HostRoomPage() {
               <CollapsiblePanel title="Recent Word Guesses" defaultOpen>
                 <div className="space-y-2">
                   {state.recentWordGuesses.map((guess, index) => (
-                    <div key={`${guess.playerId}-${index}`} className="rounded-xl bg-surface-muted px-3 py-2 text-sm ring-1 ring-violet-500/15">
-                      <span className="font-semibold text-slate-100">{guess.playerName}</span>
-                      <span className="text-slate-500"> guessed </span>
-                      <span className="font-semibold text-violet-700">{guess.word}</span>
+                    <div key={`${guess.playerId}-${index}`} className="rounded-xl bg-surface-muted px-3 py-2 text-sm ring-1 ring-ink/15">
+                      <span className="font-semibold text-[#f4ede3]">{guess.playerName}</span>
+                      <span className="text-[#8a7d6b]"> guessed </span>
+                      <span className="font-semibold text-ink">{guess.word}</span>
                     </div>
                   ))}
                 </div>
@@ -387,7 +321,7 @@ export default function HostRoomPage() {
                     <div
                       key={`${guess.playerId}-${guess.submittedAt}`}
                       className={`rounded-xl px-3 py-2 text-sm ${
-                        guess.accepted ? "bg-emerald-950/60 text-emerald-200" : "bg-surface-muted text-slate-300"
+                        guess.accepted ? "bg-success/15 text-success" : "bg-surface-muted text-[#c4b5a0]"
                       }`}
                     >
                       <span className="font-semibold">{guess.playerName}</span>: {guess.title}

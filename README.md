@@ -27,7 +27,7 @@ The dev server runs through `server.ts`, which mounts both Next.js and Socket.io
 ## Game flow
 
 1. Host creates a game at `/host`
-2. Host searches songs or adds custom lyrics using `{4}` blanks
+2. Host searches songs and builds a setlist
 3. Players join at `/play` with the room code
 4. TV display opens at `/display/[ROOMCODE]`
 5. Host starts the game, launches word-guess beats, then moves to song guessing
@@ -43,7 +43,7 @@ Hey {4}, don't make it {3}
 
 Answers (comma-separated, in blank order): `jude, bad`
 
-When importing from LRCLIB, every other eligible word is blanked automatically. You can also paste/edit custom templates before adding a round.
+When importing from LRCLIB, eligible words are blanked automatically for each round.
 
 ## Deploy to Railway
 

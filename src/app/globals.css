@@ -1,13 +1,18 @@
 @import "tailwindcss";
 
 :root {
-  --background: #14101f;
-  --foreground: #f3eef9;
-  --surface: #221c31;
-  --surface-elevated: #2d2640;
-  --surface-muted: #342c49;
-  --border: rgba(167, 139, 250, 0.18);
-  --muted: #b7a8c9;
+  --background: #1a1612;
+  --foreground: #f4ede3;
+  --surface: #252018;
+  --surface-elevated: #2f2820;
+  --surface-muted: #3a3228;
+  --ink: #d4a853;
+  --ink-bright: #e8c078;
+  --accent: #5ba4b8;
+  --accent-deep: #3d7a8c;
+  --success: #7eb892;
+  --border: rgba(212, 168, 83, 0.2);
+  --muted: #c4b5a0;
 }
 
 @theme inline {
@@ -16,7 +21,13 @@
   --color-surface: var(--surface);
   --color-surface-elevated: var(--surface-elevated);
   --color-surface-muted: var(--surface-muted);
+  --color-ink: var(--ink);
+  --color-ink-bright: var(--ink-bright);
+  --color-accent: var(--accent);
+  --color-accent-deep: var(--accent-deep);
+  --color-success: var(--success);
   --font-sans: var(--font-outfit), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-lora), Georgia, "Times New Roman", serif;
 }
 
 body {
@@ -29,16 +40,20 @@ code {
 }
 
 .input-dark {
-  border: 1px solid rgba(167, 139, 250, 0.2);
+  border: 1px solid var(--border);
   background: var(--surface-elevated);
   color: var(--foreground);
 }
 
 .input-dark::placeholder {
-  color: #8b7fa3;
+  color: #8a7d6b;
 }
 
 .input-dark:focus {
   outline: none;
-  box-shadow: 0 0 0 2px rgba(167, 139, 250, 0.45);
+  box-shadow: 0 0 0 2px rgba(91, 164, 184, 0.45);
+}
+
+.font-display {
+  font-family: var(--font-serif);
 }
