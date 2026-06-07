@@ -19,12 +19,57 @@ const TV = {
   tileHeightRem: 5.5,
   charWidthRem: 1.15,
   tilePaddingRem: 1.25,
-  tileGapRem: 0.6,
   segmentGapRem: 0.85,
   rowGapRem: 1.1,
+  edgePaddingRem: 0.85,
   minScale: 0.38,
   maxScale: 1.2,
 };
+
+function getSingleTileWidthRem(): number {
+  return Math.max(TV.tileHeightRem, TV.tilePaddingRem * 2 + TV.charWidthRem);
+}
+
+function getTvTileGap(): string {
+  const gapRem = getSingleTileWidthRem() / 4;
+  return `calc(${gapRem}rem * var(--tv-scale, 1))`;
+}
+
+function getTvEdgePadding(): string {
+  return `calc(${TV.edgePaddingRem}rem * var(--tv-scale, 1))`;
+}
+
+function sanitizeLineTokensForTv(tokens: PublicToken[]): PublicToken[] {
+  return tokens.filter(
+    (token) => !(token.type === "text" && (token.value === LINE_BREAK_MARKER || token.value.trim() === "")),
+  );
+}
+
+function normalizeRowSegments(segments: DisplayRowSegment[]): DisplayRowSegment[] {
+  const normalized: DisplayRowSegment[] = [];
+
+  for (const segment of filterTrailingSlash(segments)) {
+    if (segment.type === "slash") {
+      const previous = normalized[normalized.length - 1];
+      if (!previous || previous.type === "slash") continue;
+      normalized.push(segment);
+      continue;
+    }
+
+    const tokens = sanitizeLineTokensForTv(segment.tokens ?? []);
+    if (tokens.length === 0) continue;
+
+    const previous = normalized[normalized.length - 1];
+    if (previous?.type === "slash") {
+      normalized.push({ type: "line", tokens });
+      continue;
+    }
+
+    normalized.push({ type: "line", tokens });
+  }
+
+  return filterTrailingSlash(normalized);
+}
 
 function getMaxLinesPerRowCandidates(lineCount: number): number[] {
   if (lineCount <= 8) return [1];
@@ -41,21 +86,24 @@ export function packLinesGreedy(lines: PublicLine[], maxLinesPerRow: number): Di
 
   for (const line of lines) {
     if (linesInRow > 0 && linesInRow >= maxLinesPerRow) {
-      rows.push({ segments: filterTrailingSlash(segments) });
+      rows.push({ segments: normalizeRowSegments(segments) });
       segments = [];
       linesInRow = 0;
     }
+
+    const tokens = sanitizeLineTokensForTv(line.tokens);
+    if (tokens.length === 0) continue;
 
     if (linesInRow > 0) {
       segments.push({ type: "slash" });
     }
 
-    segments.push({ type: "line", tokens: line.tokens });
+    segments.push({ type: "line", tokens });
     linesInRow += 1;
   }
 
   if (segments.length > 0) {
-    rows.push({ segments: filterTrailingSlash(segments) });
+    rows.push({ segments: normalizeRowSegments(segments) });
   }
 
   return rows;
@@ -74,7 +122,7 @@ function isPunctuationOnly(value: string): boolean {
 function TvPunctuation({ value }: { value: string }) {
   return (
     <span
-      className="inline-flex shrink-0 items-center font-black leading-none text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.35)]"
+      className="inline-flex shrink-0 items-center pr-[calc(0.2rem*var(--tv-scale,1))] font-black leading-none text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.35)]"
       style={{ fontSize: `calc(2.75rem * var(--tv-scale, 1))` }}
     >
       {value}
@@ -83,7 +131,7 @@ function TvPunctuation({ value }: { value: string }) {
 }
 
 function TvLineTokens({ tokens }: { tokens: PublicToken[] }) {
-  const tileGap = `calc(${TV.tileGapRem}rem * var(--tv-scale, 1))`;
+  const tileGap = getTvTileGap();
   const nodes: React.ReactNode[] = [];
 
   for (let index = 0; index < tokens.length; index += 1) {
@@ -91,7 +139,6 @@ function TvLineTokens({ tokens }: { tokens: PublicToken[] }) {
 
     if (token.type === "text") {
       if (token.value === LINE_BREAK_MARKER) {
-        nodes.push(<LineBreakSlash key={`slash-${index}`} size="tv" />);
         continue;
       }
 
@@ -121,9 +168,7 @@ function TvLineTokens({ tokens }: { tokens: PublicToken[] }) {
       nodes.push(
         <span key={`unit-${index}`} className="inline-flex shrink-0 items-center">
           <BlankTile token={token} size="tv" />
-          <span className="-ml-[calc(0.15rem*var(--tv-scale,1))]">
-            <TvPunctuation value={next.value} />
-          </span>
+          <TvPunctuation value={next.value} />
         </span>,
       );
       index += 1;
@@ -156,17 +201,22 @@ function measureScaleForRows(
     return (containerHeight - rowGapTotalPx) / Math.max(rows.length, 1);
   };
 
+  const availableWidthAtScale = (scale: number) => {
+    return containerWidth - TV.edgePaddingRem * scale * rootRem * 2;
+  };
+
   for (let attempt = 0; attempt < 18; attempt += 1) {
     const mid = (lo + hi) / 2;
     content.style.setProperty("--tv-scale", String(mid));
 
     const tileHeightPx = TV.tileHeightRem * mid * rootRem;
     const rowBandHeight = rowBandHeightAtScale(mid);
+    const availableWidth = availableWidthAtScale(mid);
     const rowElements = content.querySelectorAll<HTMLElement>("[data-tv-row-inner]");
     let fits = tileHeightPx <= rowBandHeight * 0.88;
 
     rowElements.forEach((row) => {
-      if (row.scrollWidth > containerWidth) fits = false;
+      if (row.scrollWidth > availableWidth) fits = false;
     });
 
     if (fits) {
@@ -181,10 +231,11 @@ function measureScaleForRows(
 
   const tileHeightPx = TV.tileHeightRem * best * rootRem;
   const rowBandHeight = rowBandHeightAtScale(best);
+  const availableWidth = availableWidthAtScale(best);
   const rowElements = content.querySelectorAll<HTMLElement>("[data-tv-row-inner]");
   let fits = tileHeightPx <= rowBandHeight * 0.88;
   rowElements.forEach((row) => {
-    if (row.scrollWidth > containerWidth) fits = false;
+    if (row.scrollWidth > availableWidth) fits = false;
   });
 
   return { scale: best, fits };
@@ -194,10 +245,10 @@ function TvLyricRow({ row }: { row: DisplayRow }) {
   const segmentGap = `calc(${TV.segmentGapRem}rem * var(--tv-scale, 1))`;
 
   return (
-    <div data-tv-row className="flex min-h-0 w-full flex-1 items-center py-[calc(0.15rem*var(--tv-scale,1))]">
+    <div data-tv-row className="flex min-h-0 w-full flex-1 items-center overflow-visible py-[calc(0.15rem*var(--tv-scale,1))]">
       <div
         data-tv-row-inner
-        className="flex w-full min-w-0 flex-nowrap items-center justify-start"
+        className="flex w-full flex-nowrap items-center justify-start overflow-visible"
         style={{ gap: segmentGap }}
       >
         {row.segments.map((segment, segmentIndex) => {
@@ -449,16 +500,19 @@ export function ScaledLyricBoard({ lines }: { lines: PublicLine[] }) {
   }, [lines]);
 
   const rowGap = `calc(${TV.rowGapRem}rem * var(--tv-scale, 1))`;
+  const edgePadding = getTvEdgePadding();
 
   return (
     <div ref={containerRef} className="min-h-0 w-full flex-1 overflow-hidden">
       <div
         ref={contentRef}
-        className="flex h-full w-full flex-col"
+        className="flex h-full w-full flex-col overflow-visible"
         style={
           {
             "--tv-scale": layout.scale,
             gap: rowGap,
+            paddingLeft: edgePadding,
+            paddingRight: edgePadding,
           } as React.CSSProperties
         }
       >
