@@ -21,7 +21,7 @@ const TV = {
   tilePaddingRem: 1.25,
   segmentGapRem: 0.85,
   rowGapRem: 1.1,
-  edgePaddingRem: 0.85,
+  edgePaddingRem: 1.15,
   minScale: 0.38,
   maxScale: 1.2,
 };
@@ -122,17 +122,16 @@ function isPunctuationOnly(value: string): boolean {
 function TvPunctuation({ value }: { value: string }) {
   return (
     <span
-      className="inline-flex shrink-0 items-center pr-[calc(0.2rem*var(--tv-scale,1))] font-black leading-none text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.35)]"
-      style={{ fontSize: `calc(2.75rem * var(--tv-scale, 1))` }}
+      className="inline-flex shrink-0 items-center px-[calc(0.25rem*var(--tv-scale,1))] font-black leading-none text-[#fde047] drop-shadow-[0_0_10px_rgba(253,224,71,0.45)]"
+      style={{ fontSize: `calc(3.25rem * var(--tv-scale, 1))` }}
     >
       {value}
     </span>
   );
 }
 
-function TvLineTokens({ tokens }: { tokens: PublicToken[] }) {
-  const tileGap = getTvTileGap();
-  const nodes: React.ReactNode[] = [];
+function buildTvTokenItems(tokens: PublicToken[], keyPrefix: string): React.ReactNode[] {
+  const items: React.ReactNode[] = [];
 
   for (let index = 0; index < tokens.length; index += 1) {
     const token = tokens[index];
@@ -145,8 +144,8 @@ function TvLineTokens({ tokens }: { tokens: PublicToken[] }) {
       if (isPunctuationOnly(token.value)) {
         const next = tokens[index + 1];
         if (next?.type === "blank") {
-          nodes.push(
-            <span key={`unit-${index}`} className="inline-flex shrink-0 items-center">
+          items.push(
+            <span key={`${keyPrefix}-${index}-unit`} className="inline-flex shrink-0 items-center">
               <TvPunctuation value={token.value} />
               <BlankTile token={next} size="tv" />
             </span>,
@@ -155,18 +154,18 @@ function TvLineTokens({ tokens }: { tokens: PublicToken[] }) {
           continue;
         }
 
-        nodes.push(<TvPunctuation key={`punct-${index}`} value={token.value} />);
+        items.push(<TvPunctuation key={`${keyPrefix}-${index}-punct`} value={token.value} />);
         continue;
       }
 
-      nodes.push(renderToken(token, index, "tv"));
+      items.push(renderToken(token, index, "tv"));
       continue;
     }
 
     const next = tokens[index + 1];
     if (next?.type === "text" && isPunctuationOnly(next.value)) {
-      nodes.push(
-        <span key={`unit-${index}`} className="inline-flex shrink-0 items-center">
+      items.push(
+        <span key={`${keyPrefix}-${index}-unit`} className="inline-flex shrink-0 items-center">
           <BlankTile token={token} size="tv" />
           <TvPunctuation value={next.value} />
         </span>,
@@ -175,14 +174,25 @@ function TvLineTokens({ tokens }: { tokens: PublicToken[] }) {
       continue;
     }
 
-    nodes.push(<BlankTile key={`blank-${index}`} token={token} size="tv" />);
+    items.push(<BlankTile key={`${keyPrefix}-${index}-blank`} token={token} size="tv" />);
   }
 
-  return (
-    <span className="inline-flex shrink-0 flex-nowrap items-center" style={{ gap: tileGap }}>
-      {nodes}
-    </span>
-  );
+  return items;
+}
+
+function collectTvRowItems(row: DisplayRow): React.ReactNode[] {
+  const items: React.ReactNode[] = [];
+
+  row.segments.forEach((segment, segmentIndex) => {
+    if (segment.type === "slash") {
+      items.push(<LineBreakSlash key={`slash-${segmentIndex}`} size="tv" />);
+      return;
+    }
+
+    items.push(...buildTvTokenItems(segment.tokens ?? [], `line-${segmentIndex}`));
+  });
+
+  return items;
 }
 
 function measureScaleForRows(
@@ -242,24 +252,20 @@ function measureScaleForRows(
 }
 
 function TvLyricRow({ row }: { row: DisplayRow }) {
-  const segmentGap = `calc(${TV.segmentGapRem}rem * var(--tv-scale, 1))`;
+  const tileGap = getTvTileGap();
+  const items = collectTvRowItems(row);
 
   return (
-    <div data-tv-row className="flex min-h-0 w-full flex-1 items-center overflow-visible py-[calc(0.15rem*var(--tv-scale,1))]">
+    <div
+      data-tv-row
+      className="flex min-h-0 w-full flex-1 items-center justify-center overflow-visible py-[calc(0.15rem*var(--tv-scale,1))]"
+    >
       <div
         data-tv-row-inner
-        className="flex w-full flex-nowrap items-center justify-start overflow-visible"
-        style={{ gap: segmentGap }}
+        className="flex w-full max-w-full flex-nowrap items-center justify-between overflow-visible"
+        style={{ gap: tileGap }}
       >
-        {row.segments.map((segment, segmentIndex) => {
-          if (segment.type === "slash") {
-            return <LineBreakSlash key={`slash-${segmentIndex}`} size="tv" />;
-          }
-
-          return (
-            <TvLineTokens key={`line-${segmentIndex}`} tokens={segment.tokens ?? []} />
-          );
-        })}
+        {items}
       </div>
     </div>
   );
@@ -399,6 +405,26 @@ function BlankTile({
   );
 }
 
+export function HostRoundSummary({ lines }: { lines: PublicLine[] }) {
+  const lineCount = lines.length;
+  const blankCount = lines.reduce(
+    (total, line) => total + line.tokens.filter((token) => token.type === "blank").length,
+    0,
+  );
+
+  return (
+    <div className="rounded-2xl bg-surface-muted px-4 py-4 ring-1 ring-ink/15">
+      <p className="text-base font-semibold text-[#f4ede3]">
+        {lineCount} lyric lines · {blankCount} hidden words
+      </p>
+      <p className="mt-2 text-sm text-[#c4b5a0]">
+        The full puzzle board lives on the TV display. Use this console to run beats and manage the
+        round.
+      </p>
+    </div>
+  );
+}
+
 export function LyricBoard({
   lines,
   size = "md",
@@ -506,7 +532,7 @@ export function ScaledLyricBoard({ lines }: { lines: PublicLine[] }) {
     <div ref={containerRef} className="min-h-0 w-full flex-1 overflow-hidden">
       <div
         ref={contentRef}
-        className="flex h-full w-full flex-col overflow-visible"
+        className="flex h-full w-full flex-col items-center overflow-visible"
         style={
           {
             "--tv-scale": layout.scale,

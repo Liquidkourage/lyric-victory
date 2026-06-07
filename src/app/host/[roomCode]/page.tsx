@@ -6,7 +6,7 @@ import { useParams } from "next/navigation";
 import {
   BeatTimer,
   CollapsiblePanel,
-  LyricBoard,
+  HostRoundSummary,
   MusicBackdrop,
   Panel,
   PhaseBadge,
@@ -223,7 +223,7 @@ export default function HostRoomPage() {
                     <p className="text-sm text-[#8a7d6b]">{state.currentRound.artist}</p>
                   </div>
                 </div>
-                <LyricBoard lines={state.currentRound.lines} />
+                <HostRoundSummary lines={state.currentRound.lines} />
               </CollapsiblePanel>
             ) : null}
           </div>
