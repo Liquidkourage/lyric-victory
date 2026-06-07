@@ -1,7 +1,66 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { PublicLine, PublicToken } from "@/lib/types";
+
+const DISPLAY_ROW_TARGET = 10;
+const LINE_BREAK_MARKER = "/";
+
+export function combineLinesForDisplay(
+  lines: PublicLine[],
+  targetRows = DISPLAY_ROW_TARGET,
+): PublicLine[] {
+  if (lines.length <= targetRows) {
+    return lines;
+  }
+
+  const groupSize = Math.ceil(lines.length / targetRows);
+  const combined: PublicLine[] = [];
+
+  for (let i = 0; i < lines.length; i += groupSize) {
+    const group = lines.slice(i, i + groupSize);
+    const tokens: PublicToken[] = [];
+
+    group.forEach((line, index) => {
+      if (index > 0) {
+        tokens.push({ type: "text", value: LINE_BREAK_MARKER });
+      }
+      tokens.push(...line.tokens);
+    });
+
+    combined.push({ tokens });
+  }
+
+  return combined;
+}
+
+function renderToken(
+  token: PublicToken,
+  tokenIndex: number,
+  size: "sm" | "md" | "lg" | "display",
+) {
+  if (token.type === "text") {
+    if (token.value === LINE_BREAK_MARKER) {
+      return (
+        <span
+          key={tokenIndex}
+          className={`px-1 font-semibold text-violet-400 ${size === "display" ? "text-sm" : "text-base"}`}
+          aria-label="Line break"
+        >
+          /
+        </span>
+      );
+    }
+
+    return (
+      <span key={tokenIndex} className="whitespace-pre text-slate-700">
+        {token.value}
+      </span>
+    );
+  }
+
+  return <BlankTile key={tokenIndex} token={token} size={size} />;
+}
 
 function BlankTile({
   token,
@@ -58,15 +117,7 @@ export function LyricBoard({
     <div className={`${lineGap} ${textSize}`}>
       {lines.map((line, lineIndex) => (
         <div key={lineIndex} className={`flex flex-wrap items-center ${gapClass}`}>
-          {line.tokens.map((token, tokenIndex) =>
-            token.type === "text" ? (
-              <span key={tokenIndex} className="whitespace-pre text-slate-700">
-                {token.value}
-              </span>
-            ) : (
-              <BlankTile key={tokenIndex} token={token} size={size} />
-            ),
-          )}
+          {line.tokens.map((token, tokenIndex) => renderToken(token, tokenIndex, size))}
         </div>
       ))}
     </div>
@@ -77,6 +128,7 @@ export function ScaledLyricBoard({ lines }: { lines: PublicLine[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
+  const displayLines = useMemo(() => combineLinesForDisplay(lines), [lines]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -97,7 +149,7 @@ export function ScaledLyricBoard({ lines }: { lines: PublicLine[] }) {
     observer.observe(content);
 
     return () => observer.disconnect();
-  }, [lines]);
+  }, [displayLines]);
 
   return (
     <div ref={containerRef} className="flex min-h-0 flex-1 items-center justify-center overflow-hidden">
@@ -106,7 +158,7 @@ export function ScaledLyricBoard({ lines }: { lines: PublicLine[] }) {
         className="inline-block max-w-none origin-center"
         style={{ transform: `scale(${scale})` }}
       >
-        <LyricBoard lines={lines} size="display" />
+        <LyricBoard lines={displayLines} size="display" />
       </div>
     </div>
   );
