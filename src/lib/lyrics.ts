@@ -1,7 +1,47 @@
 import type { LyricToken, ParsedLyric } from "./types";
 
 const BLANK_PATTERN = /\{(\d+)\}/g;
+const NON_LETTERS = /[^a-zA-Z]/g;
 
+export function extractWordLetters(word: string): string {
+  return word.replace(NON_LETTERS, "").toLowerCase();
+}
+
+export function leadingPunctuation(word: string): string {
+  return word.match(/^[^a-zA-Z]+/)?.[0] ?? "";
+}
+
+export function trailingPunctuation(word: string): string {
+  return word.match(/[^a-zA-Z]+$/)?.[0] ?? "";
+}
+
+export function normalizeWordGuess(word: string): string {
+  return extractWordLetters(word.trim());
+}
+
+function appendHiddenWord(
+  rendered: string[],
+  answers: string[],
+  word: string,
+) {
+  const letters = extractWordLetters(word);
+  const leading = leadingPunctuation(word);
+  const trailing = trailingPunctuation(word);
+
+  if (letters.length === 0) {
+    if (word.trim()) {
+      if (rendered.length > 0) rendered.push(" ");
+      rendered.push(word.trim());
+    }
+    return;
+  }
+
+  if (rendered.length > 0) rendered.push(" ");
+  if (leading) rendered.push(leading);
+  rendered.push(`{${letters.length}}`);
+  answers.push(letters);
+  if (trailing) rendered.push(trailing);
+}
 export function parseLyricTemplate(template: string): ParsedLyric {
   const tokens: LyricToken[] = [];
   const answers: string[] = [];
@@ -66,14 +106,10 @@ export function plainLyricsToTemplate(plainLyrics: string): { template: string; 
 
     const rendered: string[] = [];
     for (const word of words) {
-      const cleaned = word.replace(/^[^\w']+|[^\w']+$/g, "");
-      if (cleaned.length > 0) {
-        rendered.push(`{${cleaned.length}}`);
-        answers.push(cleaned.toLowerCase());
-      }
+      appendHiddenWord(rendered, answers, word);
     }
 
-    outputLines.push(rendered.join(" "));
+    outputLines.push(rendered.join(""));
   }
 
   return { template: outputLines.join("\n"), answers };
@@ -91,20 +127,17 @@ export function fullyHideLyrics(
     const rendered: string[] = [];
     for (const token of line) {
       if (token.type === "blank") {
-        rendered.push(`{${token.length}}`);
-        hiddenAnswers.push(parsed.answers[token.index]);
+        const answer = parsed.answers[token.index] ?? "";
+        rendered.push(`{${answer.length || token.length}}`);
+        hiddenAnswers.push(answer);
       } else {
         const words = token.value.match(/\S+/g) ?? [];
         for (const word of words) {
-          const cleaned = word.replace(/^[^\w']+|[^\w']+$/g, "");
-          if (cleaned.length > 0) {
-            rendered.push(`{${cleaned.length}}`);
-            hiddenAnswers.push(cleaned.toLowerCase());
-          }
+          appendHiddenWord(rendered, hiddenAnswers, word);
         }
       }
     }
-    outputLines.push(rendered.join(" "));
+    outputLines.push(rendered.join(""));
   }
 
   return { template: outputLines.join("\n"), answers: hiddenAnswers };

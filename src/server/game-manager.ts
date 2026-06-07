@@ -4,6 +4,7 @@ import {
   attachAnswers,
   fullyHideLyrics,
   normalizeSongTitle,
+  normalizeWordGuess,
   parseLyricTemplate,
   titlesMatch,
 } from "../lib/lyrics";
@@ -335,7 +336,7 @@ export class GameManager {
         callback({ ok: false, error: "Player not found." });
         return;
       }
-      const normalizedWord = word.trim().toLowerCase();
+      const normalizedWord = normalizeWordGuess(word);
       if (!normalizedWord) {
         callback({ ok: false, error: "Enter a word." });
         return;

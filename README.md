@@ -35,13 +35,13 @@ The dev server runs through `server.ts`, which mounts both Next.js and Socket.io
 
 ## Lyric format
 
-Use `{n}` for an `n`-letter blank. Example:
+Use `{n}` for a blank with `n` **letters** (punctuation is ignored). Example:
 
 ```text
 Hey {4}, don't make it {3}
 ```
 
-Answers (comma-separated, in blank order): `jude, bad`
+Answers (comma-separated, in blank order): `jude, bad` — letters only, no punctuation.
 
 When importing from LRCLIB, eligible words are blanked automatically for each round.
 

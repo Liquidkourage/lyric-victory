@@ -100,7 +100,7 @@ function LineBreakSlash({ size }: { size: "sm" | "md" | "lg" | "display" | "tv" 
   if (size === "tv") {
     return (
       <span
-        className="mx-3 inline-flex h-20 min-w-16 shrink-0 items-center justify-center self-center rounded-2xl bg-[#fbbf24] text-5xl font-black leading-none text-[#1a1612] shadow-[0_0_24px_rgba(251,191,36,0.45)] ring-4 ring-white"
+        className="inline-flex shrink-0 items-center self-center px-0.5 text-[5.5rem] font-black leading-none text-[#fbbf24] drop-shadow-[0_0_16px_rgba(251,191,36,0.55)]"
         aria-label="Line break"
       >
         /
@@ -274,7 +274,7 @@ export function ScaledLyricBoard({ lines }: { lines: PublicLine[] }) {
         {displayRows.map((row, rowIndex) => (
           <div
             key={rowIndex}
-            className="flex w-full flex-nowrap items-center justify-evenly gap-3"
+            className="flex w-full flex-nowrap items-center justify-start gap-2"
           >
             {row.segments.map((segment, segmentIndex) => {
               const isLast = segmentIndex === row.segments.length - 1;
@@ -284,10 +284,7 @@ export function ScaledLyricBoard({ lines }: { lines: PublicLine[] }) {
               }
 
               return (
-                <span
-                  key={`line-${segmentIndex}`}
-                  className="inline-flex shrink-0 flex-nowrap items-center gap-3"
-                >
+                <span key={`line-${segmentIndex}`} className="contents">
                   {segment.tokens?.map((token, tokenIndex) =>
                     renderToken(token, tokenIndex, "tv"),
                   )}
