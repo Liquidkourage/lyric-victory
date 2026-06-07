@@ -20,56 +20,50 @@ const TV = {
   charWidthRem: 1.15,
   tilePaddingRem: 1.25,
   tileGapRem: 0.35,
+  segmentGapRem: 0.65,
   minScale: 0.38,
   maxScale: 1.2,
 };
+
+function getMaxLinesPerRowCandidates(lineCount: number): number[] {
+  if (lineCount <= 8) return [1];
+  return [2, 3, 4].filter((count) => count <= lineCount);
+}
+
+/** Pack lyric lines into display rows, never exceeding maxLinesPerRow lyric lines per row. */
+export function packLinesGreedy(lines: PublicLine[], maxLinesPerRow: number): DisplayRow[] {
+  if (lines.length === 0) return [];
+
+  const rows: DisplayRow[] = [];
+  let segments: DisplayRowSegment[] = [];
+  let linesInRow = 0;
+
+  for (const line of lines) {
+    if (linesInRow > 0 && linesInRow >= maxLinesPerRow) {
+      rows.push({ segments: filterTrailingSlash(segments) });
+      segments = [];
+      linesInRow = 0;
+    }
+
+    if (linesInRow > 0) {
+      segments.push({ type: "slash" });
+    }
+
+    segments.push({ type: "line", tokens: line.tokens });
+    linesInRow += 1;
+  }
+
+  if (segments.length > 0) {
+    rows.push({ segments: filterTrailingSlash(segments) });
+  }
+
+  return rows;
+}
 
 function filterTrailingSlash(segments: DisplayRowSegment[]): DisplayRowSegment[] {
   return segments.filter(
     (segment, index) => !(segment.type === "slash" && index === segments.length - 1),
   );
-}
-
-function getTargetRowCount(lineCount: number): number {
-  if (lineCount <= 8) return lineCount;
-  if (lineCount <= 18) return 8;
-  if (lineCount <= 32) return 7;
-  if (lineCount <= 48) return 6;
-  return 5;
-}
-
-function getRowCountCandidates(lineCount: number): number[] {
-  const base = getTargetRowCount(lineCount);
-  return [...new Set([base - 1, base, base + 1, base + 2])]
-    .filter((count) => count >= 1 && count <= lineCount)
-    .sort((a, b) => a - b);
-}
-
-export function packLinesToRowCount(lines: PublicLine[], targetRows: number): DisplayRow[] {
-  if (lines.length === 0) return [];
-
-  if (lines.length <= targetRows) {
-    return lines.map((line) => ({
-      segments: [{ type: "line", tokens: line.tokens }],
-    }));
-  }
-
-  const groupSize = Math.ceil(lines.length / targetRows);
-  const rows: DisplayRow[] = [];
-
-  for (let i = 0; i < lines.length; i += groupSize) {
-    const group = lines.slice(i, i + groupSize);
-    const segments: DisplayRowSegment[] = [];
-
-    group.forEach((line, index) => {
-      if (index > 0) segments.push({ type: "slash" });
-      segments.push({ type: "line", tokens: line.tokens });
-    });
-
-    rows.push({ segments: filterTrailingSlash(segments) });
-  }
-
-  return rows;
 }
 
 function isPunctuationOnly(value: string): boolean {
@@ -150,9 +144,7 @@ function measureScaleForRows(
   rows: DisplayRow[],
   containerWidth: number,
   containerHeight: number,
-): number {
-  content.style.setProperty("--tv-scale", "1");
-
+): { scale: number; fits: boolean } {
   const rootRem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
   const rowBandHeight = containerHeight / Math.max(rows.length, 1);
   let lo = TV.minScale;
@@ -164,7 +156,7 @@ function measureScaleForRows(
     content.style.setProperty("--tv-scale", String(mid));
 
     const tileHeightPx = TV.tileHeightRem * mid * rootRem;
-    const rowElements = content.querySelectorAll<HTMLElement>("[data-tv-row]");
+    const rowElements = content.querySelectorAll<HTMLElement>("[data-tv-row-inner]");
     let fits = tileHeightPx <= rowBandHeight * 0.92;
 
     rowElements.forEach((row) => {
@@ -180,27 +172,37 @@ function measureScaleForRows(
   }
 
   content.style.setProperty("--tv-scale", String(best));
-  return best;
+
+  const tileHeightPx = TV.tileHeightRem * best * rootRem;
+  const rowElements = content.querySelectorAll<HTMLElement>("[data-tv-row-inner]");
+  let fits = tileHeightPx <= rowBandHeight * 0.92;
+  rowElements.forEach((row) => {
+    if (row.scrollWidth > containerWidth) fits = false;
+  });
+
+  return { scale: best, fits };
 }
 
 function TvLyricRow({ row }: { row: DisplayRow }) {
-  const segmentGap = `calc(0.5rem * var(--tv-scale, 1))`;
+  const segmentGap = `calc(${TV.segmentGapRem}rem * var(--tv-scale, 1))`;
 
   return (
-    <div
-      data-tv-row
-      className="flex min-h-0 w-full flex-1 items-center justify-between"
-      style={{ gap: segmentGap }}
-    >
-      {row.segments.map((segment, segmentIndex) => {
-        if (segment.type === "slash") {
-          return <LineBreakSlash key={`slash-${segmentIndex}`} size="tv" />;
-        }
+    <div data-tv-row className="flex min-h-0 w-full flex-1 items-center">
+      <div
+        data-tv-row-inner
+        className="flex w-full min-w-0 flex-nowrap items-center justify-start"
+        style={{ gap: segmentGap }}
+      >
+        {row.segments.map((segment, segmentIndex) => {
+          if (segment.type === "slash") {
+            return <LineBreakSlash key={`slash-${segmentIndex}`} size="tv" />;
+          }
 
-        return (
-          <TvLineTokens key={`line-${segmentIndex}`} tokens={segment.tokens ?? []} />
-        );
-      })}
+          return (
+            <TvLineTokens key={`line-${segmentIndex}`} tokens={segment.tokens ?? []} />
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -374,7 +376,7 @@ export function ScaledLyricBoard({ lines }: { lines: PublicLine[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const [layout, setLayout] = useState<{ rows: DisplayRow[]; scale: number }>(() => ({
-    rows: packLinesToRowCount(lines, getTargetRowCount(lines.length)),
+    rows: packLinesGreedy(lines, 3),
     scale: 1,
   }));
 
@@ -389,25 +391,37 @@ export function ScaledLyricBoard({ lines }: { lines: PublicLine[] }) {
       if (containerWidth <= 0 || containerHeight <= 0) return;
 
       let bestLayout = {
-        rows: packLinesToRowCount(lines, getTargetRowCount(lines.length)),
+        rows: packLinesGreedy(lines, 2),
         scale: TV.minScale,
+        fits: false,
       };
 
-      for (const targetRows of getRowCountCandidates(lines.length)) {
-        const rows = packLinesToRowCount(lines, targetRows);
+      for (const maxLinesPerRow of getMaxLinesPerRowCandidates(lines.length)) {
+        const rows = packLinesGreedy(lines, maxLinesPerRow);
 
         flushSync(() => {
           setLayout({ rows, scale: 1 });
         });
 
-        const scale = measureScaleForRows(content, rows, containerWidth, containerHeight);
-        if (scale > bestLayout.scale) {
-          bestLayout = { rows, scale };
+        const { scale, fits } = measureScaleForRows(
+          content,
+          rows,
+          containerWidth,
+          containerHeight,
+        );
+
+        if (fits && scale >= bestLayout.scale) {
+          bestLayout = { rows, scale, fits: true };
+          continue;
+        }
+
+        if (!bestLayout.fits && scale > bestLayout.scale) {
+          bestLayout = { rows, scale, fits };
         }
       }
 
       flushSync(() => {
-        setLayout(bestLayout);
+        setLayout({ rows: bestLayout.rows, scale: bestLayout.scale });
       });
     };
 
