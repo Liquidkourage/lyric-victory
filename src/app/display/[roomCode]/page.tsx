@@ -72,9 +72,9 @@ export default function DisplayPage() {
         ) : null}
 
         <section className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_300px] gap-4">
-          <div className="flex min-h-0 flex-col overflow-hidden rounded-2xl bg-white/90 p-4 shadow-sm ring-1 ring-violet-100">
+          <div className="flex min-h-0 flex-col overflow-hidden rounded-2xl bg-white/90 p-3 shadow-sm ring-1 ring-violet-100">
             {state?.announcement ? (
-              <div className="mb-3 shrink-0 rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-500 px-4 py-2 text-center text-lg font-semibold text-white">
+              <div className="mb-2 shrink-0 rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-500 px-4 py-1.5 text-center text-base font-semibold text-white">
                 {state.announcement}
               </div>
             ) : null}

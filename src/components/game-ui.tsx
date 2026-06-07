@@ -3,12 +3,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PublicLine, PublicToken } from "@/lib/types";
 
-const DISPLAY_ROW_TARGET = 10;
 const LINE_BREAK_MARKER = "/";
+
+function getDisplayRowTarget(lineCount: number): number {
+  if (lineCount <= 8) return lineCount;
+  if (lineCount <= 18) return 8;
+  if (lineCount <= 32) return 7;
+  if (lineCount <= 48) return 6;
+  return 5;
+}
 
 export function combineLinesForDisplay(
   lines: PublicLine[],
-  targetRows = DISPLAY_ROW_TARGET,
+  targetRows = getDisplayRowTarget(lines.length),
 ): PublicLine[] {
   if (lines.length <= targetRows) {
     return lines;
@@ -34,6 +41,25 @@ export function combineLinesForDisplay(
   return combined;
 }
 
+function LineBreakSlash({ size }: { size: "sm" | "md" | "lg" | "display" }) {
+  if (size === "display") {
+    return (
+      <span
+        className="mx-2 inline-flex h-12 min-w-10 shrink-0 items-center justify-center self-center rounded-xl bg-gradient-to-b from-violet-500 to-fuchsia-500 text-3xl font-black leading-none text-white shadow-md ring-2 ring-violet-300"
+        aria-label="Line break"
+      >
+        /
+      </span>
+    );
+  }
+
+  return (
+    <span className="px-1 text-base font-semibold text-violet-400" aria-label="Line break">
+      /
+    </span>
+  );
+}
+
 function renderToken(
   token: PublicToken,
   tokenIndex: number,
@@ -41,15 +67,7 @@ function renderToken(
 ) {
   if (token.type === "text") {
     if (token.value === LINE_BREAK_MARKER) {
-      return (
-        <span
-          key={tokenIndex}
-          className={`px-1 font-semibold text-violet-400 ${size === "display" ? "text-sm" : "text-base"}`}
-          aria-label="Line break"
-        >
-          /
-        </span>
-      );
+      return <LineBreakSlash key={tokenIndex} size={size} />;
     }
 
     return (
@@ -73,7 +91,7 @@ function BlankTile({
     sm: "h-8 min-w-8 px-1 text-sm",
     md: "h-10 min-w-10 px-2 text-base",
     lg: "h-14 min-w-14 px-3 text-2xl",
-    display: "h-9 min-w-9 px-1.5 text-lg",
+    display: "h-12 min-w-12 px-2 text-2xl",
   }[size];
 
   if (token.revealed && token.answer) {
@@ -107,16 +125,19 @@ export function LyricBoard({
     sm: "text-sm leading-8",
     md: "text-base leading-10",
     lg: "text-3xl leading-[3.5rem]",
-    display: "text-base leading-9",
+    display: "text-xl leading-[3.25rem]",
   }[size];
 
-  const gapClass = size === "display" ? "gap-x-1.5 gap-y-1" : "gap-x-2 gap-y-2";
-  const lineGap = size === "display" ? "space-y-1" : "space-y-3";
+  const gapClass = size === "display" ? "gap-x-2 gap-y-2" : "gap-x-2 gap-y-2";
+  const lineGap = size === "display" ? "flex w-full flex-col justify-between gap-2" : "space-y-3";
 
   return (
     <div className={`${lineGap} ${textSize}`}>
       {lines.map((line, lineIndex) => (
-        <div key={lineIndex} className={`flex flex-wrap items-center ${gapClass}`}>
+        <div
+          key={lineIndex}
+          className={`flex flex-wrap items-center ${gapClass} ${size === "display" ? "justify-center" : ""}`}
+        >
           {line.tokens.map((token, tokenIndex) => renderToken(token, tokenIndex, size))}
         </div>
       ))}
@@ -136,15 +157,17 @@ export function ScaledLyricBoard({ lines }: { lines: PublicLine[] }) {
     if (!container || !content) return;
 
     const updateScale = () => {
-      const widthRatio = container.clientWidth / content.scrollWidth;
-      const heightRatio = container.clientHeight / content.scrollHeight;
-      const nextScale = Math.min(1, widthRatio, heightRatio);
+      const widthRatio = (container.clientWidth - 16) / content.scrollWidth;
+      const heightRatio = (container.clientHeight - 16) / content.scrollHeight;
+      const nextScale = Math.min(widthRatio, heightRatio);
       setScale(Number.isFinite(nextScale) && nextScale > 0 ? nextScale : 1);
     };
 
     updateScale();
 
-    const observer = new ResizeObserver(updateScale);
+    const observer = new ResizeObserver(() => {
+      requestAnimationFrame(updateScale);
+    });
     observer.observe(container);
     observer.observe(content);
 
@@ -152,13 +175,15 @@ export function ScaledLyricBoard({ lines }: { lines: PublicLine[] }) {
   }, [displayLines]);
 
   return (
-    <div ref={containerRef} className="flex min-h-0 flex-1 items-center justify-center overflow-hidden">
-      <div
-        ref={contentRef}
-        className="inline-block max-w-none origin-center"
-        style={{ transform: `scale(${scale})` }}
-      >
-        <LyricBoard lines={displayLines} size="display" />
+    <div ref={containerRef} className="min-h-0 w-full flex-1 overflow-hidden">
+      <div className="flex h-full w-full items-center justify-center">
+        <div
+          ref={contentRef}
+          className="inline-block max-w-none origin-center"
+          style={{ transform: `scale(${scale})` }}
+        >
+          <LyricBoard lines={displayLines} size="display" />
+        </div>
       </div>
     </div>
   );
