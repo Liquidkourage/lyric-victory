@@ -25,11 +25,17 @@ export default function DisplayPage() {
               Lyric Victory
             </p>
             <h1 className="mt-2 text-5xl font-black tracking-tight text-slate-900">
-              {state?.currentRound?.title ?? "Waiting for host"}
+              {state && state.currentRoundIndex >= 0
+                ? `Round ${state.currentRoundIndex + 1}`
+                : "Waiting for host"}
             </h1>
-            {state?.currentRound?.artist ? (
-              <p className="mt-2 text-2xl text-slate-500">{state.currentRound.artist}</p>
-            ) : null}
+            <p className="mt-2 text-2xl text-slate-500">
+              {state?.phase === "song-guess"
+                ? "Name that song"
+                : state?.phase === "word-guess"
+                  ? "Guess the words"
+                  : "Song title hidden"}
+            </p>
           </div>
 
           <div className="flex flex-col items-end gap-3">

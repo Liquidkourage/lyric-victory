@@ -2,6 +2,7 @@ import type { Server, Socket } from "socket.io";
 import { v4 as uuidv4 } from "uuid";
 import {
   attachAnswers,
+  fullyHideLyrics,
   normalizeSongTitle,
   parseLyricTemplate,
   titlesMatch,
@@ -167,7 +168,8 @@ export class GameManager {
         return;
       }
       try {
-        const parsed = attachAnswers(parseLyricTemplate(round.template), round.answers);
+        const hidden = fullyHideLyrics(round.template, round.answers);
+        const parsed = attachAnswers(parseLyricTemplate(hidden.template), hidden.answers);
         if (parsed.answers.some((answer) => !answer)) {
           callback({ ok: false, error: "Every blank needs an answer." });
           return;
@@ -226,7 +228,7 @@ export class GameManager {
       room.rounds = room.pendingRounds.map((round) => this.buildRoundState(round));
       room.currentRoundIndex = 0;
       room.phase = "round-setup";
-      room.announcement = `Round 1: ${room.rounds[0].title}`;
+      room.announcement = "Round 1 — guess the words!";
       room.updatedAt = Date.now();
       callback({ ok: true });
       this.broadcast(code);
@@ -298,7 +300,7 @@ export class GameManager {
         room.currentRoundIndex += 1;
         room.phase = "round-setup";
         const round = room.rounds[room.currentRoundIndex];
-        room.announcement = `Round ${room.currentRoundIndex + 1}: ${round.title}`;
+        room.announcement = `Round ${room.currentRoundIndex + 1} — guess the words!`;
         room.recentWordGuesses = [];
       }
       this.clearBeatTimer(room);
@@ -529,16 +531,25 @@ export class GameManager {
       totalRounds: room.rounds.length,
       beat: { ...room.beat },
       recentWordGuesses: room.recentWordGuesses,
-      roundHistory: room.rounds.map(({ title, artist }) => ({ title, artist })),
+      roundHistory: [],
     };
   }
 
   private toHostState(room: InternalRoom): HostGameState {
     const currentRound =
       room.currentRoundIndex >= 0 ? room.rounds[room.currentRoundIndex] : null;
+    const publicState = this.toPublicState(room);
 
     return {
-      ...this.toPublicState(room),
+      ...publicState,
+      currentRound: currentRound
+        ? {
+            ...this.toPublicRound(currentRound),
+            title: currentRound.title,
+            artist: currentRound.artist,
+          }
+        : null,
+      roundHistory: room.rounds.map(({ title, artist }) => ({ title, artist })),
       roundDraft: null,
       pendingRounds: room.pendingRounds,
       answerKey: currentRound?.answers ?? [],
@@ -547,8 +558,8 @@ export class GameManager {
 
   private toPublicRound(round: RoundState): PublicRoundState {
     return {
-      title: round.title,
-      artist: round.artist,
+      title: "",
+      artist: "",
       lines: round.lines.map((line) => ({
         tokens: line.map((token) => {
           if (token.type === "text") {

@@ -28,12 +28,10 @@ function BlankTile({
 
   return (
     <span
-      className={`inline-flex items-center justify-center rounded-lg bg-violet-100 font-bold text-violet-500 ring-2 ring-violet-200 ${sizeClasses}`}
+      className={`inline-flex items-center justify-center rounded-lg bg-violet-100 font-bold tabular-nums text-violet-700 ring-2 ring-violet-200 ${sizeClasses}`}
       aria-label={`${token.length} letter blank`}
     >
-      {Array.from({ length: token.length }).map((_, index) => (
-        <span key={index} className="mx-px inline-block h-1.5 w-1.5 rounded-full bg-violet-400" />
-      ))}
+      {token.length}
     </span>
   );
 }

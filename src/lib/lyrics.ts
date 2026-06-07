@@ -53,15 +53,7 @@ export function attachAnswers(parsed: ParsedLyric, answers: string[]): ParsedLyr
   return { ...parsed, answers: normalizedAnswers };
 }
 
-const STOP_WORDS = new Set([
-  "a", "an", "the", "and", "or", "but", "in", "on", "at", "to", "for", "of", "is", "it",
-  "i", "you", "we", "they", "he", "she", "my", "your", "our", "be", "are", "was", "were",
-]);
-
-export function plainLyricsToTemplate(
-  plainLyrics: string,
-  blankEvery = 2,
-): { template: string; answers: string[] } {
+export function plainLyricsToTemplate(plainLyrics: string): { template: string; answers: string[] } {
   const answers: string[] = [];
   const outputLines: string[] = [];
 
@@ -73,25 +65,49 @@ export function plainLyricsToTemplate(
     }
 
     const rendered: string[] = [];
-    words.forEach((word, index) => {
+    for (const word of words) {
       const cleaned = word.replace(/^[^\w']+|[^\w']+$/g, "");
-      const shouldBlank =
-        cleaned.length >= 3 &&
-        !STOP_WORDS.has(cleaned.toLowerCase()) &&
-        index % blankEvery === 0;
-
-      if (shouldBlank && cleaned.length > 0) {
+      if (cleaned.length > 0) {
         rendered.push(`{${cleaned.length}}`);
         answers.push(cleaned.toLowerCase());
-      } else {
-        rendered.push(word);
       }
-    });
+    }
 
     outputLines.push(rendered.join(" "));
   }
 
   return { template: outputLines.join("\n"), answers };
+}
+
+export function fullyHideLyrics(
+  template: string,
+  answers: string[],
+): { template: string; answers: string[] } {
+  const parsed = attachAnswers(parseLyricTemplate(template), answers);
+  const hiddenAnswers: string[] = [];
+  const outputLines: string[] = [];
+
+  for (const line of parsed.lines) {
+    const rendered: string[] = [];
+    for (const token of line) {
+      if (token.type === "blank") {
+        rendered.push(`{${token.length}}`);
+        hiddenAnswers.push(parsed.answers[token.index]);
+      } else {
+        const words = token.value.match(/\S+/g) ?? [];
+        for (const word of words) {
+          const cleaned = word.replace(/^[^\w']+|[^\w']+$/g, "");
+          if (cleaned.length > 0) {
+            rendered.push(`{${cleaned.length}}`);
+            hiddenAnswers.push(cleaned.toLowerCase());
+          }
+        }
+      }
+    }
+    outputLines.push(rendered.join(" "));
+  }
+
+  return { template: outputLines.join("\n"), answers: hiddenAnswers };
 }
 
 export function normalizeSongTitle(value: string): string {

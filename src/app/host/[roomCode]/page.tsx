@@ -214,7 +214,8 @@ export default function HostRoomPage() {
 
                 <Panel title="Custom Lyrics">
                   <p className="mb-4 text-sm text-slate-600">
-                    Use <code className="rounded bg-slate-100 px-1">{`{4}`}</code> for a 4-letter blank.
+                    Use <code className="rounded bg-slate-100 px-1">{`{4}`}</code> for a 4-letter word.
+                    Visible words in your paste are auto-hidden — only letter counts show on the board.
                     Answers are comma-separated in blank order.
                   </p>
                   <div className="grid gap-3">

@@ -135,7 +135,7 @@ function PlayRoomContent() {
         ) : null}
 
         {state?.currentRound ? (
-          <Panel title="Lyrics" className="mb-4">
+          <Panel title="Puzzle" className="mb-4">
             <LyricBoard lines={state.currentRound.lines} size="sm" />
           </Panel>
         ) : (
