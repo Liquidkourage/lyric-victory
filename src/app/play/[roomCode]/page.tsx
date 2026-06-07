@@ -94,10 +94,10 @@ function PlayRoomContent() {
               value={displayName}
               onChange={(event) => setDisplayName(event.target.value)}
               placeholder="Display name"
-              className="mb-3 w-full rounded-2xl border border-violet-100 px-4 py-3 text-sm outline-none ring-violet-200 focus:ring-2"
+              className="input-dark mb-3 w-full rounded-2xl px-4 py-3 text-sm"
             />
             {(joinError || socketJoinError || submitError) && (
-              <p className="mb-3 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
+              <p className="mb-3 rounded-xl bg-red-950/60 px-4 py-3 text-sm text-red-300 ring-1 ring-red-500/30">
                 {joinError ?? socketJoinError ?? submitError}
               </p>
             )}
@@ -116,7 +116,7 @@ function PlayRoomContent() {
         <header className="mb-4 flex items-center justify-between gap-3">
           <div>
             <p className="text-sm font-semibold text-violet-600">{displayName}</p>
-            <h1 className="text-2xl font-black text-slate-900">Lyric Victory</h1>
+            <h1 className="text-2xl font-black text-slate-50">Lyric Victory</h1>
           </div>
           <RoomCodeBadge code={roomCode} />
         </header>
@@ -140,7 +140,7 @@ function PlayRoomContent() {
           </Panel>
         ) : (
           <Panel className="mb-4">
-            <p className="text-center text-sm text-slate-500">
+            <p className="text-center text-sm text-slate-400">
               {state?.phase === "lobby"
                 ? "Waiting for the host to start the game…"
                 : "Waiting for the next round…"}
@@ -155,7 +155,7 @@ function PlayRoomContent() {
               endsAt={state.beat.endsAt}
               durationMs={state.beat.durationMs}
             />
-            <p className="my-3 text-sm text-slate-600">
+            <p className="my-3 text-sm text-slate-400">
               Submit whole words during each beat. All correct matches reveal on the TV board.
             </p>
             <div className="flex gap-2">
@@ -163,7 +163,7 @@ function PlayRoomContent() {
                 value={wordGuess}
                 onChange={(event) => setWordGuess(event.target.value)}
                 placeholder="Your word guess"
-                className="flex-1 rounded-2xl border border-violet-100 px-4 py-3 text-sm outline-none ring-violet-200 focus:ring-2"
+                className="input-dark flex-1 rounded-2xl px-4 py-3 text-sm"
               />
               <PrimaryButton onClick={submitWordGuess} disabled={!state.beat.active || !wordGuess.trim()}>
                 Send
@@ -179,7 +179,7 @@ function PlayRoomContent() {
                 value={songGuess}
                 onChange={(event) => setSongGuess(event.target.value)}
                 placeholder="Song title"
-                className="flex-1 rounded-2xl border border-violet-100 px-4 py-3 text-sm outline-none ring-violet-200 focus:ring-2"
+                className="input-dark flex-1 rounded-2xl px-4 py-3 text-sm"
               />
               <PrimaryButton onClick={submitSongGuess} disabled={!songGuess.trim()}>
                 Send
@@ -189,7 +189,7 @@ function PlayRoomContent() {
         ) : null}
 
         {feedback || submitError ? (
-          <p className="rounded-xl bg-violet-50 px-4 py-3 text-sm text-violet-700">
+          <p className="rounded-xl bg-violet-950/50 px-4 py-3 text-sm text-violet-200 ring-1 ring-violet-500/20">
             {submitError ?? feedback}
           </p>
         ) : null}

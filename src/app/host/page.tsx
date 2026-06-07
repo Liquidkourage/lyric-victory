@@ -31,7 +31,7 @@ export default function HostLandingPage() {
     <MusicBackdrop>
       <main className="mx-auto flex min-h-full max-w-lg flex-col justify-center px-6 py-16">
         <Panel title="Host Console">
-          <p className="mb-6 text-sm text-slate-600">
+          <p className="mb-6 text-sm text-slate-400">
             Start a new Lyric Victory session. You&apos;ll get a room code for players and a
             dedicated TV display link.
           </p>

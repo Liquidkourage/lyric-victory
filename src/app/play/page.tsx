@@ -37,13 +37,13 @@ export default function PlayJoinPage() {
               value={roomCode}
               onChange={(event) => setRoomCode(event.target.value.toUpperCase())}
               placeholder="Room code"
-              className="rounded-2xl border border-violet-100 px-4 py-3 text-center font-mono text-xl tracking-[0.25em] outline-none ring-violet-200 focus:ring-2"
+              className="input-dark rounded-2xl px-4 py-3 text-center font-mono text-xl tracking-[0.25em]"
             />
             <input
               value={displayName}
               onChange={(event) => setDisplayName(event.target.value)}
               placeholder="Display name"
-              className="rounded-2xl border border-violet-100 px-4 py-3 text-sm outline-none ring-violet-200 focus:ring-2"
+              className="input-dark rounded-2xl px-4 py-3 text-sm"
             />
             <PrimaryButton onClick={handleJoin} disabled={!roomCode.trim() || !displayName.trim()} className="w-full">
               Join as Player

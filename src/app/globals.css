@@ -1,13 +1,21 @@
 @import "tailwindcss";
 
 :root {
-  --background: #faf7f2;
-  --foreground: #0f172a;
+  --background: #14101f;
+  --foreground: #f3eef9;
+  --surface: #221c31;
+  --surface-elevated: #2d2640;
+  --surface-muted: #342c49;
+  --border: rgba(167, 139, 250, 0.18);
+  --muted: #b7a8c9;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-surface-muted: var(--surface-muted);
   --font-sans: var(--font-outfit), ui-sans-serif, system-ui, sans-serif;
 }
 
@@ -18,4 +26,19 @@ body {
 
 code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.input-dark {
+  border: 1px solid rgba(167, 139, 250, 0.2);
+  background: var(--surface-elevated);
+  color: var(--foreground);
+}
+
+.input-dark::placeholder {
+  color: #8b7fa3;
+}
+
+.input-dark:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(167, 139, 250, 0.45);
 }

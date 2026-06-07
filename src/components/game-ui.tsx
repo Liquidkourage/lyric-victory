@@ -47,7 +47,11 @@ export function buildDisplayRows(lines: PublicLine[]): DisplayRow[] {
     rows.push({ segments });
   }
 
-  return rows;
+  return rows.map((row) => ({
+    segments: row.segments.filter(
+      (segment, index) => !(segment.type === "slash" && index === row.segments.length - 1),
+    ),
+  }));
 }
 
 function getBlankStyle(length: number, size: "sm" | "md" | "lg" | "display") {
@@ -101,7 +105,7 @@ function renderToken(
     }
 
     return (
-      <span key={tokenIndex} className="whitespace-pre text-slate-700">
+      <span key={tokenIndex} className="whitespace-pre text-slate-300">
         {token.value}
       </span>
     );
@@ -125,7 +129,7 @@ function BlankTile({
     return (
       <span
         style={style}
-        className={`inline-flex items-center justify-center rounded-md bg-emerald-100 font-semibold uppercase tracking-wide text-emerald-800 ring-2 ring-emerald-300 ${className}`}
+        className={`inline-flex items-center justify-center rounded-md bg-emerald-950/70 font-semibold uppercase tracking-wide text-emerald-200 ring-2 ring-emerald-500/40 ${className}`}
       >
         {token.answer}
       </span>
@@ -135,7 +139,7 @@ function BlankTile({
   return (
     <span
       style={style}
-      className={`inline-flex items-center justify-center rounded-md bg-violet-100 font-bold tabular-nums text-violet-700 ring-2 ring-violet-200 ${className}`}
+      className={`inline-flex items-center justify-center rounded-md bg-violet-950/80 font-bold tabular-nums text-violet-200 ring-2 ring-violet-500/35 ${className}`}
       aria-label={`${token.length} letter blank`}
     >
       {token.length}
@@ -180,10 +184,12 @@ export function DisplayLyricBoard({ rows }: { rows: DisplayRow[] }) {
       {rows.map((row, rowIndex) => (
         <div
           key={rowIndex}
-          className="flex flex-wrap items-center justify-center gap-x-2 gap-y-2"
+          className="flex flex-nowrap items-center justify-center gap-x-2 overflow-hidden"
         >
           {row.segments.map((segment, segmentIndex) => {
+            const isLast = segmentIndex === row.segments.length - 1;
             if (segment.type === "slash") {
+              if (isLast) return null;
               return <LineBreakSlash key={`slash-${segmentIndex}`} size="display" />;
             }
 
@@ -270,7 +276,7 @@ export function BeatTimer({
   if (!active || !endsAt) {
     return (
       <div
-        className={`rounded-xl bg-slate-100 text-center font-medium text-slate-500 ${
+        className={`rounded-xl bg-surface-muted text-center font-medium text-slate-400 ${
           compact ? "px-3 py-2 text-xs" : "px-4 py-3 text-sm"
         }`}
       >
@@ -285,16 +291,16 @@ export function BeatTimer({
 
   return (
     <div className="rounded-xl bg-gradient-to-r from-violet-500 to-fuchsia-500 p-[2px]">
-      <div className={`rounded-[10px] bg-white ${compact ? "px-3 py-2" : "px-5 py-4"}`}>
+      <div className={`rounded-[10px] bg-surface-elevated ${compact ? "px-3 py-2" : "px-5 py-4"}`}>
         <div
-          className={`mb-1.5 flex items-center justify-between font-semibold text-violet-700 ${
+          className={`mb-1.5 flex items-center justify-between font-semibold text-violet-200 ${
             compact ? "text-xs" : "text-sm"
           }`}
         >
           <span>Beat active</span>
           <span>{seconds}s</span>
         </div>
-        <div className={`overflow-hidden rounded-full bg-violet-100 ${compact ? "h-2" : "h-3"}`}>
+        <div className={`overflow-hidden rounded-full bg-violet-950 ${compact ? "h-2" : "h-3"}`}>
           <div
             className="h-full rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 transition-all duration-200"
             style={{ width: `${progress}%` }}
@@ -316,7 +322,7 @@ export function PhaseBadge({ phase }: { phase: string }) {
   };
 
   return (
-    <span className="inline-flex items-center rounded-full bg-violet-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-violet-700">
+    <span className="inline-flex items-center rounded-full bg-violet-900/70 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-violet-200 ring-1 ring-violet-500/30">
       {labels[phase] ?? phase}
     </span>
   );
@@ -325,13 +331,13 @@ export function PhaseBadge({ phase }: { phase: string }) {
 export function RoomCodeBadge({ code, compact = false }: { code: string; compact?: boolean }) {
   return (
     <div
-      className={`inline-flex items-center gap-2 rounded-xl bg-white shadow-sm ring-1 ring-violet-100 ${
+      className={`inline-flex items-center gap-2 rounded-xl bg-surface-elevated shadow-sm ring-1 ring-violet-500/25 ${
         compact ? "px-3 py-1.5" : "rounded-2xl px-4 py-2"
       }`}
     >
       <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">Room</span>
       <span
-        className={`font-mono font-bold tracking-[0.15em] text-violet-700 ${
+        className={`font-mono font-bold tracking-[0.15em] text-violet-200 ${
           compact ? "text-lg" : "text-2xl"
         }`}
       >
@@ -343,10 +349,10 @@ export function RoomCodeBadge({ code, compact = false }: { code: string; compact
 
 export function MusicBackdrop({ children }: { children: React.ReactNode }) {
   return (
-    <div className="relative min-h-full overflow-hidden bg-[#faf7f2]">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(139,92,246,0.12),transparent_35%),radial-gradient(circle_at_top_right,rgba(244,114,182,0.12),transparent_30%),radial-gradient(circle_at_bottom,rgba(45,212,191,0.08),transparent_40%)]" />
-      <div className="pointer-events-none absolute -left-20 top-24 h-56 w-56 rounded-full bg-violet-200/40 blur-3xl" />
-      <div className="pointer-events-none absolute -right-16 top-10 h-48 w-48 rounded-full bg-pink-200/40 blur-3xl" />
+    <div className="relative min-h-full overflow-hidden bg-background">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(139,92,246,0.22),transparent_40%),radial-gradient(circle_at_top_right,rgba(244,114,182,0.16),transparent_35%),radial-gradient(circle_at_bottom,rgba(45,212,191,0.08),transparent_45%)]" />
+      <div className="pointer-events-none absolute -left-20 top-24 h-56 w-56 rounded-full bg-violet-600/20 blur-3xl" />
+      <div className="pointer-events-none absolute -right-16 top-10 h-48 w-48 rounded-full bg-fuchsia-600/15 blur-3xl" />
       <div className="relative z-10">{children}</div>
     </div>
   );
@@ -362,8 +368,8 @@ export function Panel({
   className?: string;
 }) {
   return (
-    <section className={`rounded-3xl bg-white/90 p-5 shadow-sm ring-1 ring-violet-100 backdrop-blur ${className}`}>
-      {title ? <h2 className="mb-4 text-lg font-semibold text-slate-800">{title}</h2> : null}
+    <section className={`rounded-3xl bg-surface/90 p-5 shadow-sm ring-1 ring-violet-500/20 backdrop-blur ${className}`}>
+      {title ? <h2 className="mb-4 text-lg font-semibold text-slate-100">{title}</h2> : null}
       {children}
     </section>
   );
@@ -383,19 +389,19 @@ export function CollapsiblePanel({
   const [open, setOpen] = useState(defaultOpen);
 
   return (
-    <section className={`overflow-hidden rounded-3xl bg-white/90 shadow-sm ring-1 ring-violet-100 backdrop-blur ${className}`}>
+    <section className={`overflow-hidden rounded-3xl bg-surface/90 shadow-sm ring-1 ring-violet-500/20 backdrop-blur ${className}`}>
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
         className="flex w-full items-center justify-between gap-3 px-5 py-4 text-left"
         aria-expanded={open}
       >
-        <h2 className="text-lg font-semibold text-slate-800">{title}</h2>
-        <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-100 text-lg font-bold text-violet-700">
+        <h2 className="text-lg font-semibold text-slate-100">{title}</h2>
+        <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-900/70 text-lg font-bold text-violet-200 ring-1 ring-violet-500/30">
           {open ? "−" : "+"}
         </span>
       </button>
-      {open ? <div className="border-t border-violet-100 px-5 pb-5 pt-4">{children}</div> : null}
+      {open ? <div className="border-t border-violet-500/15 px-5 pb-5 pt-4">{children}</div> : null}
     </section>
   );
 }
@@ -439,7 +445,7 @@ export function SecondaryButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-violet-700 ring-1 ring-violet-200 transition hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
+      className={`rounded-2xl bg-surface-elevated px-5 py-3 text-sm font-semibold text-violet-200 ring-1 ring-violet-500/30 transition hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
     >
       {children}
     </button>
