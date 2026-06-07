@@ -19,15 +19,16 @@ const TV = {
   tileHeightRem: 5.5,
   charWidthRem: 1.15,
   tilePaddingRem: 1.25,
-  tileGapRem: 0.35,
-  segmentGapRem: 0.65,
+  tileGapRem: 0.6,
+  segmentGapRem: 0.85,
+  rowGapRem: 1.1,
   minScale: 0.38,
   maxScale: 1.2,
 };
 
 function getMaxLinesPerRowCandidates(lineCount: number): number[] {
   if (lineCount <= 8) return [1];
-  return [2, 3, 4].filter((count) => count <= lineCount);
+  return [6, 5, 4, 3].filter((count) => count <= lineCount);
 }
 
 /** Pack lyric lines into display rows, never exceeding maxLinesPerRow lyric lines per row. */
@@ -146,18 +147,23 @@ function measureScaleForRows(
   containerHeight: number,
 ): { scale: number; fits: boolean } {
   const rootRem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-  const rowBandHeight = containerHeight / Math.max(rows.length, 1);
   let lo = TV.minScale;
   let hi = TV.maxScale;
   let best = TV.minScale;
+
+  const rowBandHeightAtScale = (scale: number) => {
+    const rowGapTotalPx = Math.max(0, rows.length - 1) * TV.rowGapRem * scale * rootRem;
+    return (containerHeight - rowGapTotalPx) / Math.max(rows.length, 1);
+  };
 
   for (let attempt = 0; attempt < 18; attempt += 1) {
     const mid = (lo + hi) / 2;
     content.style.setProperty("--tv-scale", String(mid));
 
     const tileHeightPx = TV.tileHeightRem * mid * rootRem;
+    const rowBandHeight = rowBandHeightAtScale(mid);
     const rowElements = content.querySelectorAll<HTMLElement>("[data-tv-row-inner]");
-    let fits = tileHeightPx <= rowBandHeight * 0.92;
+    let fits = tileHeightPx <= rowBandHeight * 0.88;
 
     rowElements.forEach((row) => {
       if (row.scrollWidth > containerWidth) fits = false;
@@ -174,8 +180,9 @@ function measureScaleForRows(
   content.style.setProperty("--tv-scale", String(best));
 
   const tileHeightPx = TV.tileHeightRem * best * rootRem;
+  const rowBandHeight = rowBandHeightAtScale(best);
   const rowElements = content.querySelectorAll<HTMLElement>("[data-tv-row-inner]");
-  let fits = tileHeightPx <= rowBandHeight * 0.92;
+  let fits = tileHeightPx <= rowBandHeight * 0.88;
   rowElements.forEach((row) => {
     if (row.scrollWidth > containerWidth) fits = false;
   });
@@ -187,7 +194,7 @@ function TvLyricRow({ row }: { row: DisplayRow }) {
   const segmentGap = `calc(${TV.segmentGapRem}rem * var(--tv-scale, 1))`;
 
   return (
-    <div data-tv-row className="flex min-h-0 w-full flex-1 items-center">
+    <div data-tv-row className="flex min-h-0 w-full flex-1 items-center py-[calc(0.15rem*var(--tv-scale,1))]">
       <div
         data-tv-row-inner
         className="flex w-full min-w-0 flex-nowrap items-center justify-start"
@@ -391,9 +398,10 @@ export function ScaledLyricBoard({ lines }: { lines: PublicLine[] }) {
       if (containerWidth <= 0 || containerHeight <= 0) return;
 
       let bestLayout = {
-        rows: packLinesGreedy(lines, 2),
+        rows: packLinesGreedy(lines, 4),
         scale: TV.minScale,
         fits: false,
+        rowCount: Number.POSITIVE_INFINITY,
       };
 
       for (const maxLinesPerRow of getMaxLinesPerRowCandidates(lines.length)) {
@@ -410,13 +418,18 @@ export function ScaledLyricBoard({ lines }: { lines: PublicLine[] }) {
           containerHeight,
         );
 
-        if (fits && scale >= bestLayout.scale) {
-          bestLayout = { rows, scale, fits: true };
+        if (fits) {
+          if (
+            rows.length < bestLayout.rowCount ||
+            (rows.length === bestLayout.rowCount && scale > bestLayout.scale)
+          ) {
+            bestLayout = { rows, scale, fits: true, rowCount: rows.length };
+          }
           continue;
         }
 
         if (!bestLayout.fits && scale > bestLayout.scale) {
-          bestLayout = { rows, scale, fits };
+          bestLayout = { rows, scale, fits: false, rowCount: rows.length };
         }
       }
 
@@ -435,12 +448,19 @@ export function ScaledLyricBoard({ lines }: { lines: PublicLine[] }) {
     return () => observer.disconnect();
   }, [lines]);
 
+  const rowGap = `calc(${TV.rowGapRem}rem * var(--tv-scale, 1))`;
+
   return (
     <div ref={containerRef} className="min-h-0 w-full flex-1 overflow-hidden">
       <div
         ref={contentRef}
         className="flex h-full w-full flex-col"
-        style={{ "--tv-scale": layout.scale } as React.CSSProperties}
+        style={
+          {
+            "--tv-scale": layout.scale,
+            gap: rowGap,
+          } as React.CSSProperties
+        }
       >
         {layout.rows.map((row, rowIndex) => (
           <TvLyricRow key={rowIndex} row={row} />
