@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import type { PublicLine, PublicToken } from "@/lib/types";
 
 const LINE_BREAK_MARKER = "/";
@@ -18,10 +19,9 @@ const TV = {
   tileHeightRem: 5.5,
   charWidthRem: 1.15,
   tilePaddingRem: 1.25,
-  tileGapRem: 0.4,
-  slashWidthRem: 2.25,
+  tileGapRem: 0.35,
   minScale: 0.38,
-  maxScale: 1.15,
+  maxScale: 1.2,
 };
 
 function filterTrailingSlash(segments: DisplayRowSegment[]): DisplayRowSegment[] {
@@ -30,119 +30,179 @@ function filterTrailingSlash(segments: DisplayRowSegment[]): DisplayRowSegment[]
   );
 }
 
-function estimateTokenWidthRem(token: PublicToken): number {
-  if (token.type === "blank") {
-    const length = token.revealed && token.answer ? token.answer.length : token.length;
-    const tileWidth = Math.max(
-      TV.tileHeightRem,
-      TV.tilePaddingRem * 2 + length * TV.charWidthRem,
-    );
-    return tileWidth + TV.tileGapRem;
-  }
-
-  return Math.max(1.5, token.value.length * 1.6) + TV.tileGapRem;
+function getTargetRowCount(lineCount: number): number {
+  if (lineCount <= 8) return lineCount;
+  if (lineCount <= 18) return 8;
+  if (lineCount <= 32) return 7;
+  if (lineCount <= 48) return 6;
+  return 5;
 }
 
-function estimateLineWidthRem(line: PublicLine): number {
-  return line.tokens.reduce((sum, token) => sum + estimateTokenWidthRem(token), 0);
+function getRowCountCandidates(lineCount: number): number[] {
+  const base = getTargetRowCount(lineCount);
+  return [...new Set([base - 1, base, base + 1, base + 2])]
+    .filter((count) => count >= 1 && count <= lineCount)
+    .sort((a, b) => a - b);
 }
 
-function estimateRowWidthRem(segments: DisplayRowSegment[]): number {
-  return segments.reduce((sum, segment) => {
-    if (segment.type === "slash") return sum + TV.slashWidthRem;
-    if (segment.tokens) return sum + estimateLineWidthRem({ tokens: segment.tokens });
-    return sum;
-  }, 0);
-}
-
-export function packDisplayRows(lines: PublicLine[], maxRowWidthRem: number): DisplayRow[] {
+export function packLinesToRowCount(lines: PublicLine[], targetRows: number): DisplayRow[] {
   if (lines.length === 0) return [];
 
-  if (lines.length === 1) {
-    return [{ segments: [{ type: "line", tokens: lines[0].tokens }] }];
+  if (lines.length <= targetRows) {
+    return lines.map((line) => ({
+      segments: [{ type: "line", tokens: line.tokens }],
+    }));
   }
 
+  const groupSize = Math.ceil(lines.length / targetRows);
   const rows: DisplayRow[] = [];
-  let segments: DisplayRowSegment[] = [];
 
-  for (const line of lines) {
-    const nextSegments: DisplayRowSegment[] =
-      segments.length > 0
-        ? [...segments, { type: "slash" }, { type: "line", tokens: line.tokens }]
-        : [{ type: "line", tokens: line.tokens }];
+  for (let i = 0; i < lines.length; i += groupSize) {
+    const group = lines.slice(i, i + groupSize);
+    const segments: DisplayRowSegment[] = [];
 
-    if (segments.length > 0 && estimateRowWidthRem(nextSegments) > maxRowWidthRem) {
-      rows.push({ segments: filterTrailingSlash(segments) });
-      segments = [{ type: "line", tokens: line.tokens }];
-      continue;
-    }
+    group.forEach((line, index) => {
+      if (index > 0) segments.push({ type: "slash" });
+      segments.push({ type: "line", tokens: line.tokens });
+    });
 
-    segments = nextSegments;
-  }
-
-  if (segments.length > 0) {
     rows.push({ segments: filterTrailingSlash(segments) });
   }
 
   return rows;
 }
 
-function computeTvScale(rows: DisplayRow[], containerWidthRem: number, containerHeightRem: number): number {
-  if (rows.length === 0) return 1;
-
-  const maxRowWidth = Math.max(...rows.map((row) => estimateRowWidthRem(row.segments)));
-  const totalTileHeight = rows.length * TV.tileHeightRem;
-
-  const scaleH = containerHeightRem / totalTileHeight;
-  const scaleW = containerWidthRem / maxRowWidth;
-
-  return Math.max(TV.minScale, Math.min(TV.maxScale, scaleH, scaleW));
+function isPunctuationOnly(value: string): boolean {
+  return value.length > 0 && !/[a-zA-Z]/.test(value);
 }
 
-function scoreDisplayLayout(
-  rows: DisplayRow[],
-  containerWidthRem: number,
-  containerHeightRem: number,
-): number {
-  return computeTvScale(rows, containerWidthRem, containerHeightRem);
+function TvPunctuation({ value }: { value: string }) {
+  return (
+    <span
+      className="inline-flex shrink-0 items-center font-black leading-none text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.35)]"
+      style={{ fontSize: `calc(2.75rem * var(--tv-scale, 1))` }}
+    >
+      {value}
+    </span>
+  );
 }
 
-export function buildDisplayRows(
-  lines: PublicLine[],
-  containerWidthRem: number,
-  containerHeightRem: number,
-): DisplayRow[] {
-  if (lines.length === 0) return [];
+function TvLineTokens({ tokens }: { tokens: PublicToken[] }) {
+  const tileGap = `calc(${TV.tileGapRem}rem * var(--tv-scale, 1))`;
+  const nodes: React.ReactNode[] = [];
 
-  const maxPackWidth = containerWidthRem * 0.98;
-  let bestRows = packDisplayRows(lines, maxPackWidth);
-  let bestScale = scoreDisplayLayout(bestRows, containerWidthRem, containerHeightRem);
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
 
-  const minLineWidth = Math.min(...lines.map(estimateLineWidthRem));
-  let lo = minLineWidth;
-  let hi = maxPackWidth;
+    if (token.type === "text") {
+      if (token.value === LINE_BREAK_MARKER) {
+        nodes.push(<LineBreakSlash key={`slash-${index}`} size="tv" />);
+        continue;
+      }
 
-  for (let attempt = 0; attempt < 24; attempt += 1) {
-    const mid = (lo + hi) / 2;
-    const candidateRows = packDisplayRows(lines, mid);
-    const maxRowWidth = Math.max(...candidateRows.map((row) => estimateRowWidthRem(row.segments)));
+      if (isPunctuationOnly(token.value)) {
+        const next = tokens[index + 1];
+        if (next?.type === "blank") {
+          nodes.push(
+            <span key={`unit-${index}`} className="inline-flex shrink-0 items-center">
+              <TvPunctuation value={token.value} />
+              <BlankTile token={next} size="tv" />
+            </span>,
+          );
+          index += 1;
+          continue;
+        }
 
-    if (maxRowWidth > containerWidthRem) {
-      hi = mid;
+        nodes.push(<TvPunctuation key={`punct-${index}`} value={token.value} />);
+        continue;
+      }
+
+      nodes.push(renderToken(token, index, "tv"));
       continue;
     }
 
-    const scale = scoreDisplayLayout(candidateRows, containerWidthRem, containerHeightRem);
-    if (scale >= bestScale - 0.001) {
-      bestScale = scale;
-      bestRows = candidateRows;
+    const next = tokens[index + 1];
+    if (next?.type === "text" && isPunctuationOnly(next.value)) {
+      nodes.push(
+        <span key={`unit-${index}`} className="inline-flex shrink-0 items-center">
+          <BlankTile token={token} size="tv" />
+          <span className="-ml-[calc(0.15rem*var(--tv-scale,1))]">
+            <TvPunctuation value={next.value} />
+          </span>
+        </span>,
+      );
+      index += 1;
+      continue;
+    }
+
+    nodes.push(<BlankTile key={`blank-${index}`} token={token} size="tv" />);
+  }
+
+  return (
+    <span className="inline-flex shrink-0 flex-nowrap items-center" style={{ gap: tileGap }}>
+      {nodes}
+    </span>
+  );
+}
+
+function measureScaleForRows(
+  content: HTMLDivElement,
+  rows: DisplayRow[],
+  containerWidth: number,
+  containerHeight: number,
+): number {
+  content.style.setProperty("--tv-scale", "1");
+
+  const rootRem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+  const rowBandHeight = containerHeight / Math.max(rows.length, 1);
+  let lo = TV.minScale;
+  let hi = TV.maxScale;
+  let best = TV.minScale;
+
+  for (let attempt = 0; attempt < 18; attempt += 1) {
+    const mid = (lo + hi) / 2;
+    content.style.setProperty("--tv-scale", String(mid));
+
+    const tileHeightPx = TV.tileHeightRem * mid * rootRem;
+    const rowElements = content.querySelectorAll<HTMLElement>("[data-tv-row]");
+    let fits = tileHeightPx <= rowBandHeight * 0.92;
+
+    rowElements.forEach((row) => {
+      if (row.scrollWidth > containerWidth) fits = false;
+    });
+
+    if (fits) {
+      best = mid;
       lo = mid;
     } else {
       hi = mid;
     }
   }
 
-  return bestRows;
+  content.style.setProperty("--tv-scale", String(best));
+  return best;
+}
+
+function TvLyricRow({ row }: { row: DisplayRow }) {
+  const segmentGap = `calc(0.5rem * var(--tv-scale, 1))`;
+
+  return (
+    <div
+      data-tv-row
+      className="flex min-h-0 w-full flex-1 items-center justify-between"
+      style={{ gap: segmentGap }}
+    >
+      {row.segments.map((segment, segmentIndex) => {
+        if (segment.type === "slash") {
+          return <LineBreakSlash key={`slash-${segmentIndex}`} size="tv" />;
+        }
+
+        return (
+          <TvLineTokens key={`line-${segmentIndex}`} tokens={segment.tokens ?? []} />
+        );
+      })}
+    </div>
+  );
 }
 
 function getBlankStyle(length: number, size: "sm" | "md" | "lg" | "display" | "tv") {
@@ -312,68 +372,64 @@ export function LyricBoard({
 
 export function ScaledLyricBoard({ lines }: { lines: PublicLine[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const [layout, setLayout] = useState<{ rows: DisplayRow[]; scale: number }>(() => ({
-    rows: packDisplayRows(lines, 100),
+    rows: packLinesToRowCount(lines, getTargetRowCount(lines.length)),
     scale: 1,
   }));
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const container = containerRef.current;
-    if (!container) return;
+    const content = contentRef.current;
+    if (!container || !content || lines.length === 0) return;
 
-    const updateLayout = () => {
-      const rootRem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-      const containerWidthRem = container.clientWidth / rootRem;
-      const containerHeightRem = container.clientHeight / rootRem;
+    const runLayout = () => {
+      const containerWidth = container.clientWidth;
+      const containerHeight = container.clientHeight;
+      if (containerWidth <= 0 || containerHeight <= 0) return;
 
-      const rows = buildDisplayRows(lines, containerWidthRem, containerHeightRem);
-      const scale = computeTvScale(rows, containerWidthRem, containerHeightRem);
+      let bestLayout = {
+        rows: packLinesToRowCount(lines, getTargetRowCount(lines.length)),
+        scale: TV.minScale,
+      };
 
-      setLayout({ rows, scale });
+      for (const targetRows of getRowCountCandidates(lines.length)) {
+        const rows = packLinesToRowCount(lines, targetRows);
+
+        flushSync(() => {
+          setLayout({ rows, scale: 1 });
+        });
+
+        const scale = measureScaleForRows(content, rows, containerWidth, containerHeight);
+        if (scale > bestLayout.scale) {
+          bestLayout = { rows, scale };
+        }
+      }
+
+      flushSync(() => {
+        setLayout(bestLayout);
+      });
     };
 
-    updateLayout();
+    runLayout();
 
     const observer = new ResizeObserver(() => {
-      requestAnimationFrame(updateLayout);
+      runLayout();
     });
     observer.observe(container);
 
     return () => observer.disconnect();
   }, [lines]);
 
-  const tileGap = `calc(${TV.tileGapRem}rem * var(--tv-scale, 1))`;
-
   return (
     <div ref={containerRef} className="min-h-0 w-full flex-1 overflow-hidden">
       <div
-        className="flex h-full w-full flex-col justify-between py-[calc(0.35rem*var(--tv-scale,1))]"
+        ref={contentRef}
+        className="flex h-full w-full flex-col"
         style={{ "--tv-scale": layout.scale } as React.CSSProperties}
       >
         {layout.rows.map((row, rowIndex) => (
-          <div
-            key={rowIndex}
-            className="flex w-full shrink-0 flex-nowrap items-center justify-start"
-            style={{ gap: tileGap }}
-          >
-            {row.segments.map((segment, segmentIndex) => {
-              if (segment.type === "slash") {
-                return <LineBreakSlash key={`slash-${segmentIndex}`} size="tv" />;
-              }
-
-              return (
-                <span
-                  key={`line-${segmentIndex}`}
-                  className="inline-flex shrink-0 flex-nowrap items-center"
-                  style={{ gap: tileGap }}
-                >
-                  {segment.tokens?.map((token, tokenIndex) =>
-                    renderToken(token, tokenIndex, "tv"),
-                  )}
-                </span>
-              );
-            })}
-          </div>
+          <TvLyricRow key={rowIndex} row={row} />
         ))}
       </div>
     </div>
