@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { PublicLine, PublicToken } from "@/lib/types";
 
 const LINE_BREAK_MARKER = "/";
@@ -14,15 +14,15 @@ export interface DisplayRow {
   segments: DisplayRowSegment[];
 }
 
-function getDisplayRowTarget(lineCount: number): number {
-  if (lineCount <= 8) return lineCount;
-  if (lineCount <= 18) return 8;
-  if (lineCount <= 32) return 7;
-  if (lineCount <= 48) return 6;
-  return 5;
-}
-
-const MAX_TOKENS_PER_ROW = 36;
+const TV = {
+  tileHeightRem: 5.5,
+  charWidthRem: 1.15,
+  tilePaddingRem: 1.25,
+  tileGapRem: 0.4,
+  slashWidthRem: 2.25,
+  minScale: 0.38,
+  maxScale: 1.15,
+};
 
 function filterTrailingSlash(segments: DisplayRowSegment[]): DisplayRowSegment[] {
   return segments.filter(
@@ -30,55 +30,134 @@ function filterTrailingSlash(segments: DisplayRowSegment[]): DisplayRowSegment[]
   );
 }
 
-export function buildDisplayRows(lines: PublicLine[]): DisplayRow[] {
-  if (lines.length === 0) return [];
-
-  const targetRows = getDisplayRowTarget(lines.length);
-
-  if (lines.length <= targetRows) {
-    return lines.map((line) => ({
-      segments: [{ type: "line", tokens: line.tokens }],
-    }));
+function estimateTokenWidthRem(token: PublicToken): number {
+  if (token.type === "blank") {
+    const length = token.revealed && token.answer ? token.answer.length : token.length;
+    const tileWidth = Math.max(
+      TV.tileHeightRem,
+      TV.tilePaddingRem * 2 + length * TV.charWidthRem,
+    );
+    return tileWidth + TV.tileGapRem;
   }
 
-  const groupSize = Math.ceil(lines.length / targetRows);
+  return Math.max(1.5, token.value.length * 1.6) + TV.tileGapRem;
+}
+
+function estimateLineWidthRem(line: PublicLine): number {
+  return line.tokens.reduce((sum, token) => sum + estimateTokenWidthRem(token), 0);
+}
+
+function estimateRowWidthRem(segments: DisplayRowSegment[]): number {
+  return segments.reduce((sum, segment) => {
+    if (segment.type === "slash") return sum + TV.slashWidthRem;
+    if (segment.tokens) return sum + estimateLineWidthRem({ tokens: segment.tokens });
+    return sum;
+  }, 0);
+}
+
+export function packDisplayRows(lines: PublicLine[], maxRowWidthRem: number): DisplayRow[] {
+  if (lines.length === 0) return [];
+
+  if (lines.length === 1) {
+    return [{ segments: [{ type: "line", tokens: lines[0].tokens }] }];
+  }
+
   const rows: DisplayRow[] = [];
+  let segments: DisplayRowSegment[] = [];
 
-  for (let i = 0; i < lines.length; i += groupSize) {
-    const group = lines.slice(i, i + groupSize);
-    let segments: DisplayRowSegment[] = [];
-    let tokenCount = 0;
+  for (const line of lines) {
+    const nextSegments: DisplayRowSegment[] =
+      segments.length > 0
+        ? [...segments, { type: "slash" }, { type: "line", tokens: line.tokens }]
+        : [{ type: "line", tokens: line.tokens }];
 
-    for (const line of group) {
-      const lineTokenCount = line.tokens.length;
-
-      if (segments.length > 0 && tokenCount + lineTokenCount > MAX_TOKENS_PER_ROW) {
-        rows.push({ segments: filterTrailingSlash(segments) });
-        segments = [];
-        tokenCount = 0;
-      }
-
-      if (segments.length > 0) {
-        segments.push({ type: "slash" });
-      }
-
-      segments.push({ type: "line", tokens: line.tokens });
-      tokenCount += lineTokenCount;
-    }
-
-    if (segments.length > 0) {
+    if (segments.length > 0 && estimateRowWidthRem(nextSegments) > maxRowWidthRem) {
       rows.push({ segments: filterTrailingSlash(segments) });
+      segments = [{ type: "line", tokens: line.tokens }];
+      continue;
     }
+
+    segments = nextSegments;
+  }
+
+  if (segments.length > 0) {
+    rows.push({ segments: filterTrailingSlash(segments) });
   }
 
   return rows;
 }
 
+function computeTvScale(rows: DisplayRow[], containerWidthRem: number, containerHeightRem: number): number {
+  if (rows.length === 0) return 1;
+
+  const maxRowWidth = Math.max(...rows.map((row) => estimateRowWidthRem(row.segments)));
+  const totalTileHeight = rows.length * TV.tileHeightRem;
+
+  const scaleH = containerHeightRem / totalTileHeight;
+  const scaleW = containerWidthRem / maxRowWidth;
+
+  return Math.max(TV.minScale, Math.min(TV.maxScale, scaleH, scaleW));
+}
+
+function scoreDisplayLayout(
+  rows: DisplayRow[],
+  containerWidthRem: number,
+  containerHeightRem: number,
+): number {
+  return computeTvScale(rows, containerWidthRem, containerHeightRem);
+}
+
+export function buildDisplayRows(
+  lines: PublicLine[],
+  containerWidthRem: number,
+  containerHeightRem: number,
+): DisplayRow[] {
+  if (lines.length === 0) return [];
+
+  const maxPackWidth = containerWidthRem * 0.98;
+  let bestRows = packDisplayRows(lines, maxPackWidth);
+  let bestScale = scoreDisplayLayout(bestRows, containerWidthRem, containerHeightRem);
+
+  const minLineWidth = Math.min(...lines.map(estimateLineWidthRem));
+  let lo = minLineWidth;
+  let hi = maxPackWidth;
+
+  for (let attempt = 0; attempt < 24; attempt += 1) {
+    const mid = (lo + hi) / 2;
+    const candidateRows = packDisplayRows(lines, mid);
+    const maxRowWidth = Math.max(...candidateRows.map((row) => estimateRowWidthRem(row.segments)));
+
+    if (maxRowWidth > containerWidthRem) {
+      hi = mid;
+      continue;
+    }
+
+    const scale = scoreDisplayLayout(candidateRows, containerWidthRem, containerHeightRem);
+    if (scale >= bestScale - 0.001) {
+      bestScale = scale;
+      bestRows = candidateRows;
+      lo = mid;
+    } else {
+      hi = mid;
+    }
+  }
+
+  return bestRows;
+}
+
 function getBlankStyle(length: number, size: "sm" | "md" | "lg" | "display" | "tv") {
-  const heightRem = { sm: 2, md: 2.5, lg: 3.5, display: 3, tv: 5.5 }[size];
-  const charWidthRem = { sm: 0.45, md: 0.55, lg: 0.85, display: 0.7, tv: 1.15 }[size];
-  const paddingRem = { sm: 0.5, md: 0.75, lg: 1, display: 0.85, tv: 1.25 }[size];
+  const heightRem = { sm: 2, md: 2.5, lg: 3.5, display: 3, tv: TV.tileHeightRem }[size];
+  const charWidthRem = { sm: 0.45, md: 0.55, lg: 0.85, display: 0.7, tv: TV.charWidthRem }[size];
+  const paddingRem = { sm: 0.5, md: 0.75, lg: 1, display: 0.85, tv: TV.tilePaddingRem }[size];
   const minWidthRem = Math.max(heightRem, paddingRem * 2 + length * charWidthRem);
+
+  if (size === "tv") {
+    return {
+      height: `calc(${heightRem}rem * var(--tv-scale, 1))`,
+      minWidth: `calc(${minWidthRem}rem * var(--tv-scale, 1))`,
+      fontSize: `calc(3rem * var(--tv-scale, 1))`,
+    };
+  }
 
   return {
     height: `${heightRem}rem`,
@@ -92,7 +171,7 @@ function getBlankClasses(size: "sm" | "md" | "lg" | "display" | "tv") {
     md: "px-2 text-base",
     lg: "px-3 text-2xl",
     display: "px-2 text-2xl",
-    tv: "px-3 text-5xl font-black",
+    tv: "px-[calc(0.75rem*var(--tv-scale,1))] font-black",
   }[size];
 }
 
@@ -100,7 +179,8 @@ function LineBreakSlash({ size }: { size: "sm" | "md" | "lg" | "display" | "tv" 
   if (size === "tv") {
     return (
       <span
-        className="inline-flex shrink-0 items-center self-center px-0.5 text-[5.5rem] font-black leading-none text-[#fbbf24] drop-shadow-[0_0_16px_rgba(251,191,36,0.55)]"
+        className="inline-flex shrink-0 items-center self-center px-0.5 font-black leading-none text-[#fbbf24] drop-shadow-[0_0_16px_rgba(251,191,36,0.55)]"
+        style={{ fontSize: `calc(${TV.tileHeightRem}rem * var(--tv-scale, 1))` }}
         aria-label="Line break"
       >
         /
@@ -141,8 +221,13 @@ function renderToken(
         key={tokenIndex}
         className={
           size === "tv"
-            ? "whitespace-pre text-3xl font-semibold text-white"
+            ? "whitespace-pre font-semibold text-white"
             : "whitespace-pre text-[#c4b5a0]"
+        }
+        style={
+          size === "tv"
+            ? { fontSize: `calc(1.875rem * var(--tv-scale, 1))` }
+            : undefined
         }
       >
         {token.value}
@@ -227,64 +312,61 @@ export function LyricBoard({
 
 export function ScaledLyricBoard({ lines }: { lines: PublicLine[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const contentRef = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState(1);
-  const displayRows = useMemo(() => buildDisplayRows(lines), [lines]);
+  const [layout, setLayout] = useState<{ rows: DisplayRow[]; scale: number }>(() => ({
+    rows: packDisplayRows(lines, 100),
+    scale: 1,
+  }));
 
   useEffect(() => {
     const container = containerRef.current;
-    const content = contentRef.current;
-    if (!container || !content) return;
+    if (!container) return;
 
-    const updateScale = () => {
-      content.style.transform = "none";
-      content.style.width = "100%";
-      content.style.height = "auto";
+    const updateLayout = () => {
+      const rootRem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+      const containerWidthRem = container.clientWidth / rootRem;
+      const containerHeightRem = container.clientHeight / rootRem;
 
-      const heightRatio = container.clientHeight / Math.max(content.scrollHeight, 1);
-      const widthRatio = container.clientWidth / Math.max(content.scrollWidth, 1);
-      const nextScale = Math.max(0.45, Math.min(1, heightRatio, widthRatio));
+      const rows = buildDisplayRows(lines, containerWidthRem, containerHeightRem);
+      const scale = computeTvScale(rows, containerWidthRem, containerHeightRem);
 
-      setScale(Number.isFinite(nextScale) ? nextScale : 1);
+      setLayout({ rows, scale });
     };
 
-    updateScale();
+    updateLayout();
 
     const observer = new ResizeObserver(() => {
-      requestAnimationFrame(updateScale);
+      requestAnimationFrame(updateLayout);
     });
     observer.observe(container);
 
     return () => observer.disconnect();
-  }, [displayRows]);
+  }, [lines]);
 
-  const scaledWidth = scale < 1 ? `${100 / scale}%` : "100%";
+  const tileGap = `calc(${TV.tileGapRem}rem * var(--tv-scale, 1))`;
 
   return (
     <div ref={containerRef} className="min-h-0 w-full flex-1 overflow-hidden">
       <div
-        ref={contentRef}
-        className="flex w-full flex-col justify-evenly gap-2"
-        style={{
-          width: scaledWidth,
-          transform: scale < 1 ? `scale(${scale})` : undefined,
-          transformOrigin: "top left",
-        }}
+        className="flex h-full w-full flex-col justify-between py-[calc(0.35rem*var(--tv-scale,1))]"
+        style={{ "--tv-scale": layout.scale } as React.CSSProperties}
       >
-        {displayRows.map((row, rowIndex) => (
+        {layout.rows.map((row, rowIndex) => (
           <div
             key={rowIndex}
-            className="flex w-full flex-nowrap items-center justify-start gap-2"
+            className="flex w-full shrink-0 flex-nowrap items-center justify-start"
+            style={{ gap: tileGap }}
           >
             {row.segments.map((segment, segmentIndex) => {
-              const isLast = segmentIndex === row.segments.length - 1;
               if (segment.type === "slash") {
-                if (isLast) return null;
                 return <LineBreakSlash key={`slash-${segmentIndex}`} size="tv" />;
               }
 
               return (
-                <span key={`line-${segmentIndex}`} className="contents">
+                <span
+                  key={`line-${segmentIndex}`}
+                  className="inline-flex shrink-0 flex-nowrap items-center"
+                  style={{ gap: tileGap }}
+                >
                   {segment.tokens?.map((token, tokenIndex) =>
                     renderToken(token, tokenIndex, "tv"),
                   )}
