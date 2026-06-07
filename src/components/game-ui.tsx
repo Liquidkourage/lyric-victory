@@ -1,9 +1,78 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { PublicLine, PublicToken } from "@/lib/types";
 
 const LINE_BREAK_MARKER = "/";
+
+export interface DisplayRowSegment {
+  type: "line" | "slash";
+  tokens?: PublicToken[];
+}
+
+export interface DisplayRow {
+  segments: DisplayRowSegment[];
+}
+
+function getDisplayRowTarget(lineCount: number): number {
+  if (lineCount <= 8) return lineCount;
+  if (lineCount <= 18) return 8;
+  if (lineCount <= 32) return 7;
+  if (lineCount <= 48) return 6;
+  return 5;
+}
+
+const MAX_TOKENS_PER_ROW = 36;
+
+function filterTrailingSlash(segments: DisplayRowSegment[]): DisplayRowSegment[] {
+  return segments.filter(
+    (segment, index) => !(segment.type === "slash" && index === segments.length - 1),
+  );
+}
+
+export function buildDisplayRows(lines: PublicLine[]): DisplayRow[] {
+  if (lines.length === 0) return [];
+
+  const targetRows = getDisplayRowTarget(lines.length);
+
+  if (lines.length <= targetRows) {
+    return lines.map((line) => ({
+      segments: [{ type: "line", tokens: line.tokens }],
+    }));
+  }
+
+  const groupSize = Math.ceil(lines.length / targetRows);
+  const rows: DisplayRow[] = [];
+
+  for (let i = 0; i < lines.length; i += groupSize) {
+    const group = lines.slice(i, i + groupSize);
+    let segments: DisplayRowSegment[] = [];
+    let tokenCount = 0;
+
+    for (const line of group) {
+      const lineTokenCount = line.tokens.length;
+
+      if (segments.length > 0 && tokenCount + lineTokenCount > MAX_TOKENS_PER_ROW) {
+        rows.push({ segments: filterTrailingSlash(segments) });
+        segments = [];
+        tokenCount = 0;
+      }
+
+      if (segments.length > 0) {
+        segments.push({ type: "slash" });
+      }
+
+      segments.push({ type: "line", tokens: line.tokens });
+      tokenCount += lineTokenCount;
+    }
+
+    if (segments.length > 0) {
+      rows.push({ segments: filterTrailingSlash(segments) });
+    }
+  }
+
+  return rows;
+}
 
 function getBlankStyle(length: number, size: "sm" | "md" | "lg" | "display" | "tv") {
   const heightRem = { sm: 2, md: 2.5, lg: 3.5, display: 3, tv: 5.5 }[size];
@@ -160,6 +229,7 @@ export function ScaledLyricBoard({ lines }: { lines: PublicLine[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
+  const displayRows = useMemo(() => buildDisplayRows(lines), [lines]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -186,7 +256,7 @@ export function ScaledLyricBoard({ lines }: { lines: PublicLine[] }) {
     observer.observe(container);
 
     return () => observer.disconnect();
-  }, [lines]);
+  }, [displayRows]);
 
   const scaledWidth = scale < 1 ? `${100 / scale}%` : "100%";
 
@@ -201,12 +271,29 @@ export function ScaledLyricBoard({ lines }: { lines: PublicLine[] }) {
           transformOrigin: "top left",
         }}
       >
-        {lines.map((line, lineIndex) => (
+        {displayRows.map((row, rowIndex) => (
           <div
-            key={lineIndex}
-            className="flex w-full flex-nowrap items-center justify-start gap-3"
+            key={rowIndex}
+            className="flex w-full flex-nowrap items-center justify-evenly gap-3"
           >
-            {line.tokens.map((token, tokenIndex) => renderToken(token, tokenIndex, "tv"))}
+            {row.segments.map((segment, segmentIndex) => {
+              const isLast = segmentIndex === row.segments.length - 1;
+              if (segment.type === "slash") {
+                if (isLast) return null;
+                return <LineBreakSlash key={`slash-${segmentIndex}`} size="tv" />;
+              }
+
+              return (
+                <span
+                  key={`line-${segmentIndex}`}
+                  className="inline-flex shrink-0 flex-nowrap items-center gap-3"
+                >
+                  {segment.tokens?.map((token, tokenIndex) =>
+                    renderToken(token, tokenIndex, "tv"),
+                  )}
+                </span>
+              );
+            })}
           </div>
         ))}
       </div>
