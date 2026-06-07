@@ -5,6 +5,15 @@ import type { PublicLine, PublicToken } from "@/lib/types";
 
 const LINE_BREAK_MARKER = "/";
 
+export interface DisplayRowSegment {
+  type: "line" | "slash";
+  tokens?: PublicToken[];
+}
+
+export interface DisplayRow {
+  segments: DisplayRowSegment[];
+}
+
 function getDisplayRowTarget(lineCount: number): number {
   if (lineCount <= 8) return lineCount;
   if (lineCount <= 18) return 8;
@@ -13,32 +22,53 @@ function getDisplayRowTarget(lineCount: number): number {
   return 5;
 }
 
-export function combineLinesForDisplay(
-  lines: PublicLine[],
-  targetRows = getDisplayRowTarget(lines.length),
-): PublicLine[] {
+export function buildDisplayRows(lines: PublicLine[]): DisplayRow[] {
+  const targetRows = getDisplayRowTarget(lines.length);
   if (lines.length <= targetRows) {
-    return lines;
+    return lines.map((line) => ({
+      segments: [{ type: "line", tokens: line.tokens }],
+    }));
   }
 
   const groupSize = Math.ceil(lines.length / targetRows);
-  const combined: PublicLine[] = [];
+  const rows: DisplayRow[] = [];
 
   for (let i = 0; i < lines.length; i += groupSize) {
     const group = lines.slice(i, i + groupSize);
-    const tokens: PublicToken[] = [];
+    const segments: DisplayRowSegment[] = [];
 
     group.forEach((line, index) => {
       if (index > 0) {
-        tokens.push({ type: "text", value: LINE_BREAK_MARKER });
+        segments.push({ type: "slash" });
       }
-      tokens.push(...line.tokens);
+      segments.push({ type: "line", tokens: line.tokens });
     });
 
-    combined.push({ tokens });
+    rows.push({ segments });
   }
 
-  return combined;
+  return rows;
+}
+
+function getBlankStyle(length: number, size: "sm" | "md" | "lg" | "display") {
+  const heightRem = { sm: 2, md: 2.5, lg: 3.5, display: 3 }[size];
+  const charWidthRem = { sm: 0.45, md: 0.55, lg: 0.85, display: 0.7 }[size];
+  const paddingRem = { sm: 0.5, md: 0.75, lg: 1, display: 0.85 }[size];
+  const minWidthRem = Math.max(heightRem, paddingRem * 2 + length * charWidthRem);
+
+  return {
+    height: `${heightRem}rem`,
+    minWidth: `${minWidthRem}rem`,
+  };
+}
+
+function getBlankClasses(size: "sm" | "md" | "lg" | "display") {
+  return {
+    sm: "px-1 text-sm",
+    md: "px-2 text-base",
+    lg: "px-3 text-2xl",
+    display: "px-2 text-2xl",
+  }[size];
 }
 
 function LineBreakSlash({ size }: { size: "sm" | "md" | "lg" | "display" }) {
@@ -87,17 +117,15 @@ function BlankTile({
   token: Extract<PublicToken, { type: "blank" }>;
   size?: "sm" | "md" | "lg" | "display";
 }) {
-  const sizeClasses = {
-    sm: "h-8 min-w-8 px-1 text-sm",
-    md: "h-10 min-w-10 px-2 text-base",
-    lg: "h-14 min-w-14 px-3 text-2xl",
-    display: "h-12 min-w-12 px-2 text-2xl",
-  }[size];
+  const charCount = token.revealed && token.answer ? token.answer.length : token.length;
+  const style = getBlankStyle(charCount, size);
+  const className = getBlankClasses(size);
 
   if (token.revealed && token.answer) {
     return (
       <span
-        className={`inline-flex items-center justify-center rounded-md bg-emerald-100 font-semibold uppercase tracking-wide text-emerald-800 ring-2 ring-emerald-300 ${sizeClasses}`}
+        style={style}
+        className={`inline-flex items-center justify-center rounded-md bg-emerald-100 font-semibold uppercase tracking-wide text-emerald-800 ring-2 ring-emerald-300 ${className}`}
       >
         {token.answer}
       </span>
@@ -106,7 +134,8 @@ function BlankTile({
 
   return (
     <span
-      className={`inline-flex items-center justify-center rounded-md bg-violet-100 font-bold tabular-nums text-violet-700 ring-2 ring-violet-200 ${sizeClasses}`}
+      style={style}
+      className={`inline-flex items-center justify-center rounded-md bg-violet-100 font-bold tabular-nums text-violet-700 ring-2 ring-violet-200 ${className}`}
       aria-label={`${token.length} letter blank`}
     >
       {token.length}
@@ -136,9 +165,39 @@ export function LyricBoard({
       {lines.map((line, lineIndex) => (
         <div
           key={lineIndex}
-          className={`flex flex-wrap items-center ${gapClass} ${size === "display" ? "justify-center" : ""}`}
+          className={`inline-flex max-w-full shrink-0 flex-nowrap items-center ${gapClass} ${size === "display" ? "justify-center" : ""}`}
         >
           {line.tokens.map((token, tokenIndex) => renderToken(token, tokenIndex, size))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function DisplayLyricBoard({ rows }: { rows: DisplayRow[] }) {
+  return (
+    <div className="flex w-full flex-col justify-between gap-2 text-xl leading-[3.25rem]">
+      {rows.map((row, rowIndex) => (
+        <div
+          key={rowIndex}
+          className="flex flex-wrap items-center justify-center gap-x-2 gap-y-2"
+        >
+          {row.segments.map((segment, segmentIndex) => {
+            if (segment.type === "slash") {
+              return <LineBreakSlash key={`slash-${segmentIndex}`} size="display" />;
+            }
+
+            return (
+              <span
+                key={`line-${segmentIndex}`}
+                className="inline-flex shrink-0 flex-nowrap items-center gap-x-2"
+              >
+                {segment.tokens?.map((token, tokenIndex) =>
+                  renderToken(token, tokenIndex, "display"),
+                )}
+              </span>
+            );
+          })}
         </div>
       ))}
     </div>
@@ -149,7 +208,7 @@ export function ScaledLyricBoard({ lines }: { lines: PublicLine[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
-  const displayLines = useMemo(() => combineLinesForDisplay(lines), [lines]);
+  const displayRows = useMemo(() => buildDisplayRows(lines), [lines]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -172,7 +231,7 @@ export function ScaledLyricBoard({ lines }: { lines: PublicLine[] }) {
     observer.observe(content);
 
     return () => observer.disconnect();
-  }, [displayLines]);
+  }, [displayRows]);
 
   return (
     <div ref={containerRef} className="min-h-0 w-full flex-1 overflow-hidden">
@@ -182,7 +241,7 @@ export function ScaledLyricBoard({ lines }: { lines: PublicLine[] }) {
           className="inline-block max-w-none origin-center"
           style={{ transform: `scale(${scale})` }}
         >
-          <LyricBoard lines={displayLines} size="display" />
+          <DisplayLyricBoard rows={displayRows} />
         </div>
       </div>
     </div>
@@ -306,6 +365,37 @@ export function Panel({
     <section className={`rounded-3xl bg-white/90 p-5 shadow-sm ring-1 ring-violet-100 backdrop-blur ${className}`}>
       {title ? <h2 className="mb-4 text-lg font-semibold text-slate-800">{title}</h2> : null}
       {children}
+    </section>
+  );
+}
+
+export function CollapsiblePanel({
+  title,
+  children,
+  defaultOpen = true,
+  className = "",
+}: {
+  title: string;
+  children: React.ReactNode;
+  defaultOpen?: boolean;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+
+  return (
+    <section className={`overflow-hidden rounded-3xl bg-white/90 shadow-sm ring-1 ring-violet-100 backdrop-blur ${className}`}>
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="flex w-full items-center justify-between gap-3 px-5 py-4 text-left"
+        aria-expanded={open}
+      >
+        <h2 className="text-lg font-semibold text-slate-800">{title}</h2>
+        <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-100 text-lg font-bold text-violet-700">
+          {open ? "−" : "+"}
+        </span>
+      </button>
+      {open ? <div className="border-t border-violet-100 px-5 pb-5 pt-4">{children}</div> : null}
     </section>
   );
 }

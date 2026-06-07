@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
   BeatTimer,
+  CollapsiblePanel,
   LyricBoard,
   MusicBackdrop,
   Panel,
@@ -179,7 +180,7 @@ export default function HostRoomPage() {
           <div className="space-y-6">
             {state?.phase === "lobby" ? (
               <>
-                <Panel title="Song Search">
+                <CollapsiblePanel title="Song Search" defaultOpen>
                   <div className="mb-4 flex gap-2">
                     <input
                       value={searchQuery}
@@ -210,9 +211,9 @@ export default function HostRoomPage() {
                       </button>
                     ))}
                   </div>
-                </Panel>
+                </CollapsiblePanel>
 
-                <Panel title="Custom Lyrics">
+                <CollapsiblePanel title="Custom Lyrics" defaultOpen={false}>
                   <p className="mb-4 text-sm text-slate-600">
                     Use <code className="rounded bg-slate-100 px-1">{`{4}`}</code> for a 4-letter word.
                     Visible words in your paste are auto-hidden — only letter counts show on the board.
@@ -245,9 +246,9 @@ export default function HostRoomPage() {
                     />
                     <PrimaryButton onClick={addCustomRound}>Add Custom Round</PrimaryButton>
                   </div>
-                </Panel>
+                </CollapsiblePanel>
 
-                <Panel title="Queued Rounds">
+                <CollapsiblePanel title="Queued Rounds" defaultOpen>
                   {(state?.pendingRounds.length ?? 0) === 0 ? (
                     <p className="text-sm text-slate-500">No rounds queued yet.</p>
                   ) : (
@@ -276,12 +277,12 @@ export default function HostRoomPage() {
                       Start Game
                     </PrimaryButton>
                   </div>
-                </Panel>
+                </CollapsiblePanel>
               </>
             ) : null}
 
             {state?.currentRound ? (
-              <Panel title={`Round ${state.currentRoundIndex + 1} Board`}>
+              <CollapsiblePanel title={`Round ${state.currentRoundIndex + 1} Board`} defaultOpen>
                 <div className="mb-4 flex flex-wrap items-center gap-3">
                   <div>
                     <p className="text-xl font-bold text-slate-900">{state.currentRound.title}</p>
@@ -289,12 +290,12 @@ export default function HostRoomPage() {
                   </div>
                 </div>
                 <LyricBoard lines={state.currentRound.lines} />
-              </Panel>
+              </CollapsiblePanel>
             ) : null}
           </div>
 
           <div className="space-y-6">
-            <Panel title="Live Controls">
+            <CollapsiblePanel title="Live Controls" defaultOpen>
               <BeatTimer
                 active={state?.beat.active ?? false}
                 endsAt={state?.beat.endsAt ?? null}
@@ -328,9 +329,9 @@ export default function HostRoomPage() {
                   <SecondaryButton onClick={() => runHostAction(endGame)}>End Game</SecondaryButton>
                 ) : null}
               </div>
-            </Panel>
+            </CollapsiblePanel>
 
-            <Panel title="Announcement">
+            <CollapsiblePanel title="Announcement" defaultOpen={false}>
               <textarea
                 value={announcementDraft}
                 onChange={(event) => setAnnouncementDraft(event.target.value)}
@@ -340,9 +341,9 @@ export default function HostRoomPage() {
               <PrimaryButton onClick={() => runHostAction(() => setAnnouncement(announcementDraft))}>
                 Push to Display
               </PrimaryButton>
-            </Panel>
+            </CollapsiblePanel>
 
-            <Panel title={`Players (${state?.players.length ?? 0})`}>
+            <CollapsiblePanel title={`Players (${state?.players.length ?? 0})`} defaultOpen>
               <div className="flex flex-wrap gap-2">
                 {state?.players.map((player) => (
                   <span
@@ -357,16 +358,16 @@ export default function HostRoomPage() {
                   </span>
                 ))}
               </div>
-            </Panel>
+            </CollapsiblePanel>
 
             {state?.answerKey.length ? (
-              <Panel title="Answer Key (host only)">
+              <CollapsiblePanel title="Answer Key (host only)" defaultOpen>
                 <p className="font-mono text-sm text-slate-600">{state.answerKey.join(", ")}</p>
-              </Panel>
+              </CollapsiblePanel>
             ) : null}
 
             {state?.recentWordGuesses.length ? (
-              <Panel title="Recent Word Guesses">
+              <CollapsiblePanel title="Recent Word Guesses" defaultOpen>
                 <div className="space-y-2">
                   {state.recentWordGuesses.map((guess, index) => (
                     <div key={`${guess.playerId}-${index}`} className="rounded-xl bg-slate-50 px-3 py-2 text-sm">
@@ -376,11 +377,11 @@ export default function HostRoomPage() {
                     </div>
                   ))}
                 </div>
-              </Panel>
+              </CollapsiblePanel>
             ) : null}
 
             {state?.currentRound?.songGuesses.length ? (
-              <Panel title="Song Guesses">
+              <CollapsiblePanel title="Song Guesses" defaultOpen>
                 <div className="space-y-2">
                   {state.currentRound.songGuesses.map((guess) => (
                     <div
@@ -393,7 +394,7 @@ export default function HostRoomPage() {
                     </div>
                   ))}
                 </div>
-              </Panel>
+              </CollapsiblePanel>
             ) : null}
           </div>
         </div>
