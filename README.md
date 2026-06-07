@@ -1,36 +1,93 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Lyric Victory
 
-## Getting Started
+Real-time party game platform where players guess missing lyric words beat-by-beat, then name the song. Built for three surfaces:
 
-First, run the development server:
+- **Host console** — queue songs, run beats, push announcements
+- **Player phones** — join with a room code, submit word and song guesses
+- **TV display** — 1080p board for the room
+
+## Stack
+
+- Next.js (App Router)
+- Socket.io for live sync
+- LRCLIB API for song search + lyric import
+- Tailwind CSS
+
+## Local development
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+The dev server runs through `server.ts`, which mounts both Next.js and Socket.io on the same port.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Game flow
 
-## Learn More
+1. Host creates a game at `/host`
+2. Host searches songs or adds custom lyrics using `{4}` blanks
+3. Players join at `/play` with the room code
+4. TV display opens at `/display/[ROOMCODE]`
+5. Host starts the game, launches word-guess beats, then moves to song guessing
+6. Host manually advances rounds
 
-To learn more about Next.js, take a look at the following resources:
+## Lyric format
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Use `{n}` for an `n`-letter blank. Example:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```text
+Hey {4}, don't make it {3}
+```
 
-## Deploy on Vercel
+Answers (comma-separated, in blank order): `jude, bad`
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+When importing from LRCLIB, every other eligible word is blanked automatically. You can also paste/edit custom templates before adding a round.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Deploy to Railway
+
+1. Push this repo to GitHub
+2. Create a new Railway project from the repo
+3. Railway will detect Node via Nixpacks
+4. Ensure the service uses:
+   - **Build command:** `npm run build`
+   - **Start command:** `npm start`
+5. Railway sets `PORT` automatically
+
+`railway.toml` is included with a health check on `/`.
+
+### Environment variables
+
+No required secrets for MVP. Optional:
+
+| Variable | Description |
+|----------|-------------|
+| `PORT` | Set automatically by Railway |
+| `HOSTNAME` | Defaults to `0.0.0.0` |
+
+## Routes
+
+| Path | Purpose |
+|------|---------|
+| `/` | Landing page |
+| `/host` | Create a game |
+| `/host/[roomCode]` | Host dashboard |
+| `/play` | Player join form |
+| `/play/[roomCode]` | Player game UI |
+| `/display/[roomCode]` | Public TV board |
+
+## Notes
+
+- Game state is in-memory on the server (good for small/medium concurrent rooms on a single instance)
+- Host auth is a browser session token stored in `sessionStorage`
+- Scoring is intentionally deferred for a later iteration
+
+## Scripts
+
+```bash
+npm run dev    # Next.js + Socket.io dev server
+npm run build  # Production build
+npm run start  # Production server
+npm run lint   # ESLint
+```
