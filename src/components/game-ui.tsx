@@ -1,66 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { PublicLine, PublicToken } from "@/lib/types";
 
 const LINE_BREAK_MARKER = "/";
 
-export interface DisplayRowSegment {
-  type: "line" | "slash";
-  tokens?: PublicToken[];
-}
-
-export interface DisplayRow {
-  segments: DisplayRowSegment[];
-}
-
-const MAX_TOKENS_PER_ROW = 28;
-
-function filterTrailingSlash(segments: DisplayRowSegment[]): DisplayRowSegment[] {
-  return segments.filter(
-    (segment, index) => !(segment.type === "slash" && index === segments.length - 1),
-  );
-}
-
-export function buildDisplayRows(lines: PublicLine[]): DisplayRow[] {
-  if (lines.length === 0) return [];
-
-  if (lines.length === 1) {
-    return [{ segments: [{ type: "line", tokens: lines[0].tokens }] }];
-  }
-
-  const rows: DisplayRow[] = [];
-  let segments: DisplayRowSegment[] = [];
-  let tokenCount = 0;
-
-  for (const line of lines) {
-    const lineTokenCount = line.tokens.length;
-
-    if (segments.length > 0 && tokenCount + lineTokenCount > MAX_TOKENS_PER_ROW) {
-      rows.push({ segments: filterTrailingSlash(segments) });
-      segments = [];
-      tokenCount = 0;
-    }
-
-    if (segments.length > 0) {
-      segments.push({ type: "slash" });
-    }
-
-    segments.push({ type: "line", tokens: line.tokens });
-    tokenCount += lineTokenCount;
-  }
-
-  if (segments.length > 0) {
-    rows.push({ segments: filterTrailingSlash(segments) });
-  }
-
-  return rows;
-}
-
-function getBlankStyle(length: number, size: "sm" | "md" | "lg" | "display") {
-  const heightRem = { sm: 2, md: 2.5, lg: 3.5, display: 3 }[size];
-  const charWidthRem = { sm: 0.45, md: 0.55, lg: 0.85, display: 0.7 }[size];
-  const paddingRem = { sm: 0.5, md: 0.75, lg: 1, display: 0.85 }[size];
+function getBlankStyle(length: number, size: "sm" | "md" | "lg" | "display" | "tv") {
+  const heightRem = { sm: 2, md: 2.5, lg: 3.5, display: 3, tv: 5.5 }[size];
+  const charWidthRem = { sm: 0.45, md: 0.55, lg: 0.85, display: 0.7, tv: 1.15 }[size];
+  const paddingRem = { sm: 0.5, md: 0.75, lg: 1, display: 0.85, tv: 1.25 }[size];
   const minWidthRem = Math.max(heightRem, paddingRem * 2 + length * charWidthRem);
 
   return {
@@ -69,16 +17,28 @@ function getBlankStyle(length: number, size: "sm" | "md" | "lg" | "display") {
   };
 }
 
-function getBlankClasses(size: "sm" | "md" | "lg" | "display") {
+function getBlankClasses(size: "sm" | "md" | "lg" | "display" | "tv") {
   return {
     sm: "px-1 text-sm",
     md: "px-2 text-base",
     lg: "px-3 text-2xl",
     display: "px-2 text-2xl",
+    tv: "px-3 text-5xl font-black",
   }[size];
 }
 
-function LineBreakSlash({ size }: { size: "sm" | "md" | "lg" | "display" }) {
+function LineBreakSlash({ size }: { size: "sm" | "md" | "lg" | "display" | "tv" }) {
+  if (size === "tv") {
+    return (
+      <span
+        className="mx-3 inline-flex h-20 min-w-16 shrink-0 items-center justify-center self-center rounded-2xl bg-[#fbbf24] text-5xl font-black leading-none text-[#1a1612] shadow-[0_0_24px_rgba(251,191,36,0.45)] ring-4 ring-white"
+        aria-label="Line break"
+      >
+        /
+      </span>
+    );
+  }
+
   if (size === "display") {
     return (
       <span
@@ -100,7 +60,7 @@ function LineBreakSlash({ size }: { size: "sm" | "md" | "lg" | "display" }) {
 function renderToken(
   token: PublicToken,
   tokenIndex: number,
-  size: "sm" | "md" | "lg" | "display",
+  size: "sm" | "md" | "lg" | "display" | "tv",
 ) {
   if (token.type === "text") {
     if (token.value === LINE_BREAK_MARKER) {
@@ -108,7 +68,14 @@ function renderToken(
     }
 
     return (
-      <span key={tokenIndex} className="whitespace-pre text-[#c4b5a0]">
+      <span
+        key={tokenIndex}
+        className={
+          size === "tv"
+            ? "whitespace-pre text-3xl font-semibold text-white"
+            : "whitespace-pre text-[#c4b5a0]"
+        }
+      >
         {token.value}
       </span>
     );
@@ -122,7 +89,7 @@ function BlankTile({
   size = "md",
 }: {
   token: Extract<PublicToken, { type: "blank" }>;
-  size?: "sm" | "md" | "lg" | "display";
+  size?: "sm" | "md" | "lg" | "display" | "tv";
 }) {
   const charCount = token.revealed && token.answer ? token.answer.length : token.length;
   const style = getBlankStyle(charCount, size);
@@ -132,7 +99,11 @@ function BlankTile({
     return (
       <span
         style={style}
-        className={`inline-flex items-center justify-center rounded-md bg-success/15 font-semibold uppercase tracking-wide text-success ring-2 ring-success/35 ${className}`}
+        className={
+          size === "tv"
+            ? `inline-flex items-center justify-center rounded-xl bg-[#16a34a] font-black uppercase tracking-wide text-white shadow-[0_0_20px_rgba(22,163,74,0.5)] ring-[3px] ring-white ${className}`
+            : `inline-flex items-center justify-center rounded-md bg-success/15 font-semibold uppercase tracking-wide text-success ring-2 ring-success/35 ${className}`
+        }
       >
         {token.answer}
       </span>
@@ -142,7 +113,11 @@ function BlankTile({
   return (
     <span
       style={style}
-      className={`inline-flex items-center justify-center rounded-md bg-surface-muted font-bold tabular-nums text-ink-bright ring-2 ring-ink/30 ${className}`}
+      className={
+        size === "tv"
+          ? `inline-flex items-center justify-center rounded-xl bg-[#fde047] font-black tabular-nums text-[#1a1612] shadow-[0_0_24px_rgba(253,224,71,0.35)] ring-[3px] ring-white ${className}`
+          : `inline-flex items-center justify-center rounded-md bg-surface-muted font-bold tabular-nums text-ink-bright ring-2 ring-ink/30 ${className}`
+      }
       aria-label={`${token.length} letter blank`}
     >
       {token.length}
@@ -181,43 +156,10 @@ export function LyricBoard({
   );
 }
 
-export function DisplayLyricBoard({ rows }: { rows: DisplayRow[] }) {
-  return (
-    <div className="flex w-full flex-col justify-center gap-y-3 text-xl leading-[3.25rem]">
-      {rows.map((row, rowIndex) => (
-        <div
-          key={rowIndex}
-          className="flex w-full flex-wrap items-center justify-center gap-x-2 gap-y-2"
-        >
-          {row.segments.map((segment, segmentIndex) => {
-            const isLast = segmentIndex === row.segments.length - 1;
-            if (segment.type === "slash") {
-              if (isLast) return null;
-              return <LineBreakSlash key={`slash-${segmentIndex}`} size="display" />;
-            }
-
-            return (
-              <span
-                key={`line-${segmentIndex}`}
-                className="inline-flex max-w-full shrink-0 flex-nowrap items-center gap-x-2"
-              >
-                {segment.tokens?.map((token, tokenIndex) =>
-                  renderToken(token, tokenIndex, "display"),
-                )}
-              </span>
-            );
-          })}
-        </div>
-      ))}
-    </div>
-  );
-}
-
 export function ScaledLyricBoard({ lines }: { lines: PublicLine[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
-  const displayRows = useMemo(() => buildDisplayRows(lines), [lines]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -225,19 +167,15 @@ export function ScaledLyricBoard({ lines }: { lines: PublicLine[] }) {
     if (!container || !content) return;
 
     const updateScale = () => {
-      const availableWidth = Math.max(container.clientWidth - 24, 1);
-      const availableHeight = Math.max(container.clientHeight - 24, 1);
-
-      content.style.width = `${availableWidth}px`;
       content.style.transform = "none";
+      content.style.width = "100%";
+      content.style.height = "auto";
 
-      const naturalHeight = content.scrollHeight;
-      const naturalWidth = content.scrollWidth;
-      const heightScale = availableHeight / naturalHeight;
-      const widthScale = availableWidth / naturalWidth;
-      const nextScale = Math.min(1, heightScale, widthScale);
+      const heightRatio = container.clientHeight / Math.max(content.scrollHeight, 1);
+      const widthRatio = container.clientWidth / Math.max(content.scrollWidth, 1);
+      const nextScale = Math.max(0.45, Math.min(1, heightRatio, widthRatio));
 
-      setScale(Number.isFinite(nextScale) && nextScale > 0 ? nextScale : 1);
+      setScale(Number.isFinite(nextScale) ? nextScale : 1);
     };
 
     updateScale();
@@ -248,18 +186,29 @@ export function ScaledLyricBoard({ lines }: { lines: PublicLine[] }) {
     observer.observe(container);
 
     return () => observer.disconnect();
-  }, [displayRows]);
+  }, [lines]);
+
+  const scaledWidth = scale < 1 ? `${100 / scale}%` : "100%";
 
   return (
     <div ref={containerRef} className="min-h-0 w-full flex-1 overflow-hidden">
-      <div className="flex h-full w-full items-center justify-center">
-        <div
-          ref={contentRef}
-          className="origin-center"
-          style={{ transform: `scale(${scale})`, width: "100%" }}
-        >
-          <DisplayLyricBoard rows={displayRows} />
-        </div>
+      <div
+        ref={contentRef}
+        className="flex w-full flex-col justify-evenly gap-2"
+        style={{
+          width: scaledWidth,
+          transform: scale < 1 ? `scale(${scale})` : undefined,
+          transformOrigin: "top left",
+        }}
+      >
+        {lines.map((line, lineIndex) => (
+          <div
+            key={lineIndex}
+            className="flex w-full flex-nowrap items-center justify-start gap-3"
+          >
+            {line.tokens.map((token, tokenIndex) => renderToken(token, tokenIndex, "tv"))}
+          </div>
+        ))}
       </div>
     </div>
   );
