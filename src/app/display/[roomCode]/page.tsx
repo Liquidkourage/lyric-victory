@@ -8,6 +8,7 @@ import {
   ScaledLyricBoard,
 } from "@/components/game-ui";
 import { usePublicGame } from "@/hooks/useGameSocket";
+import { groupWordGuessEntries } from "@/lib/guess-events";
 
 function SidebarCard({
   title,
@@ -34,6 +35,7 @@ export default function DisplayPage() {
   const params = useParams<{ roomCode: string }>();
   const roomCode = params.roomCode.toUpperCase();
   const { state, connected, error } = usePublicGame(roomCode);
+  const recentWordGuesses = groupWordGuessEntries(state?.recentWordGuesses ?? []).slice(0, 5);
 
   const phaseLabel =
     state?.phase === "song-guess"
@@ -133,7 +135,7 @@ export default function DisplayPage() {
 
             <SidebarCard title="Recent Guesses">
               <div className="space-y-2 overflow-hidden">
-                {(state?.recentWordGuesses ?? []).slice(0, 5).map((guess, index) => (
+                {recentWordGuesses.map((guess, index) => (
                   <div
                     key={`${guess.playerId}-${index}`}
                     className="truncate rounded-lg bg-black/35 px-3 py-2 text-sm ring-1 ring-white/15"
@@ -141,10 +143,15 @@ export default function DisplayPage() {
                     <span className="font-bold text-white">{guess.playerName}</span>
                     <span className="text-white/50"> {"->"} </span>
                     <span className="font-black uppercase text-[#fde047]">{guess.word}</span>
-                    {guess.points ? <span className="text-white/60"> +{guess.points}</span> : null}
+                    {guess.count > 1 ? (
+                      <span className="ml-2 rounded-full bg-white/15 px-2 py-0.5 text-xs font-black text-white">
+                        {guess.count}
+                      </span>
+                    ) : null}
+                    {guess.totalPoints ? <span className="text-white/60"> +{guess.totalPoints}</span> : null}
                   </div>
                 ))}
-                {(state?.recentWordGuesses.length ?? 0) === 0 ? (
+                {recentWordGuesses.length === 0 ? (
                   <p className="text-sm text-white/60">Word guesses appear live.</p>
                 ) : null}
               </div>

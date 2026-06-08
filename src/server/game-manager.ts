@@ -471,7 +471,7 @@ export class GameManager {
 
       const result = this.applyWordGuess(room, player, normalizedWord, now);
       room.updatedAt = now;
-      callback({ ok: true, accepted: result.accepted, points: result.points });
+      callback({ ok: true, accepted: result.accepted, points: result.points, count: result.count });
       this.broadcast(code);
     });
 
@@ -553,7 +553,7 @@ export class GameManager {
 
   private applyWordGuess(room: InternalRoom, player: Player, word: string, submittedAt: number) {
     const round = room.rounds[room.currentRoundIndex];
-    if (!round) return { accepted: false, points: 0 };
+    if (!round) return { accepted: false, points: 0, count: 0 };
 
     const matchingBlankIndexes = round.tokens
       .filter((token) => token.type === "blank")
@@ -573,7 +573,7 @@ export class GameManager {
         submittedAt,
       });
       room.recentWordGuesses = room.recentWordGuesses.slice(0, 12);
-      return { accepted: false, points: 0 };
+      return { accepted: false, points: 0, count: 0 };
     }
 
     const totalAppearances = round.answers.filter((answer) => normalizeWordGuess(answer) === word).length;
@@ -598,7 +598,7 @@ export class GameManager {
     player.score += totalPoints;
     room.recentWordGuesses = room.recentWordGuesses.slice(0, 12);
     room.announcement = `${player.displayName} found ${word.toUpperCase()} for ${totalPoints} points!`;
-    return { accepted: true, points: totalPoints };
+    return { accepted: true, points: totalPoints, count: matchingBlankIndexes.length };
   }
 
   private getWordGuessPoints(word: string, totalAppearances: number) {

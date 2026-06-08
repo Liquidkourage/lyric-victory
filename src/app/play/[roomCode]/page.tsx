@@ -78,7 +78,7 @@ function PlayRoomContent() {
     if (result.ok) {
       setFeedback(
         result.accepted
-          ? `Correct word! +${result.points ?? 0} points`
+          ? `Correct word${(result.count ?? 0) > 1 ? ` x${result.count}` : ""}! +${result.points ?? 0} points`
           : "Word sent. Keep listening.",
       );
       setWordGuess("");

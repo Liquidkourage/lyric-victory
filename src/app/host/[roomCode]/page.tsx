@@ -14,6 +14,7 @@ import {
   SecondaryButton,
 } from "@/components/game-ui";
 import { getStoredHostToken, useHostGame } from "@/hooks/useGameSocket";
+import { groupWordGuessEntries } from "@/lib/guess-events";
 import type { SongSearchResult } from "@/lib/types";
 
 export default function HostRoomPage() {
@@ -39,6 +40,7 @@ export default function HostRoomPage() {
   const [searching, setSearching] = useState(false);
   const [announcementDraft, setAnnouncementDraft] = useState("");
   const [loadingLyrics, setLoadingLyrics] = useState(false);
+  const recentWordGuesses = groupWordGuessEntries(state?.recentWordGuesses ?? []);
 
   useEffect(() => {
     if (state?.announcement) {
@@ -277,14 +279,19 @@ export default function HostRoomPage() {
               </CollapsiblePanel>
             ) : null}
 
-            {state?.recentWordGuesses.length ? (
+            {recentWordGuesses.length ? (
               <CollapsiblePanel title="Recent Word Guesses" defaultOpen>
                 <div className="space-y-2">
-                  {state.recentWordGuesses.map((guess, index) => (
+                  {recentWordGuesses.map((guess, index) => (
                     <div key={`${guess.playerId}-${index}`} className="rounded-xl bg-surface-muted px-3 py-2 text-sm ring-1 ring-ink/15">
                       <span className="font-semibold text-[#f4ede3]">{guess.playerName}</span>
                       <span className="text-[#8a7d6b]"> guessed </span>
                       <span className="font-semibold text-ink">{guess.word}</span>
+                      {guess.count > 1 ? (
+                        <span className="ml-2 rounded-full bg-ink/15 px-2 py-0.5 text-xs font-bold text-ink">
+                          {guess.count}
+                        </span>
+                      ) : null}
                     </div>
                   ))}
                 </div>
