@@ -19,6 +19,8 @@ const TV = {
   tileHeightRem: 5.5,
   charWidthRem: 1.15,
   tilePaddingRem: 1.25,
+  markWidthRem: 2.05,
+  markGapRem: 0.55,
   segmentGapRem: 0.85,
   rowGapRem: 1.1,
   edgePaddingRem: 1.15,
@@ -53,7 +55,7 @@ function estimateTokenWidthRem(token: PublicToken): number {
   }
 
   if (isPunctuationOnly(token.value)) {
-    return TV.tileHeightRem * 0.35;
+    return TV.markWidthRem;
   }
 
   return token.value.length * 0.95;
@@ -101,8 +103,9 @@ function normalizeRowSegments(segments: DisplayRowSegment[]): DisplayRowSegment[
 }
 
 function getMaxLinesPerRowCandidates(lineCount: number): number[] {
-  if (lineCount <= 8) return [1];
-  return [6, 5, 4, 3].filter((count) => count <= lineCount);
+  if (lineCount <= 4) return [1];
+  if (lineCount <= 8) return [2, 1];
+  return [8, 7, 6, 5, 4, 3, 2].filter((count) => count <= lineCount);
 }
 
 /** Pack lyric lines into display rows, never exceeding maxLinesPerRow lyric lines per row. */
@@ -148,7 +151,7 @@ function packLinesBalanced(lines: PublicLine[], maxLinesPerRow: number): Display
   const rowCount = Math.ceil(visibleLines.length / maxLinesPerRow);
   const tokenGapRem = getSingleTileWidthRem() / 4;
   const lineWidths = visibleLines.map((line) => estimateLineWidthRem(line.tokens));
-  const separatorWidth = TV.tileHeightRem * 0.35 + tokenGapRem * 2;
+  const separatorWidth = TV.markWidthRem + tokenGapRem * 2;
   const totalWidth =
     lineWidths.reduce((sum, width) => sum + width, 0) +
     Math.max(0, visibleLines.length - rowCount) * separatorWidth;
@@ -227,11 +230,26 @@ function isPunctuationOnly(value: string): boolean {
   return value.length > 0 && !/[a-zA-Z]/.test(value);
 }
 
+function getTvMarkStyle(value: string): React.CSSProperties {
+  const opticalShift =
+    value === "(" || value === "[" || value === "{"
+      ? "0.06em"
+      : value === ")" || value === "]" || value === "}"
+        ? "-0.06em"
+        : "0";
+
+  return {
+    fontSize: `calc(${TV.tileHeightRem}rem * var(--tv-scale, 1))`,
+    minWidth: `calc(${TV.markWidthRem}rem * var(--tv-scale, 1))`,
+    transform: `translateX(${opticalShift})`,
+  };
+}
+
 function TvBreakMark({ value, label }: { value: string; label: string }) {
   return (
     <span
-      className="inline-flex shrink-0 items-center self-center px-0.5 font-black leading-none text-[#fbbf24] drop-shadow-[0_0_16px_rgba(251,191,36,0.55)]"
-      style={{ fontSize: `calc(${TV.tileHeightRem}rem * var(--tv-scale, 1))` }}
+      className="inline-flex shrink-0 items-center justify-center self-center px-0.5 font-black leading-none text-white drop-shadow-[0_0_16px_rgba(255,255,255,0.42)]"
+      style={getTvMarkStyle(value)}
       aria-label={label}
     >
       {value}
@@ -241,6 +259,17 @@ function TvBreakMark({ value, label }: { value: string; label: string }) {
 
 function TvPunctuation({ value }: { value: string }) {
   return <TvBreakMark value={value} label="Punctuation" />;
+}
+
+function TvPunctuationUnit({ children }: { children: React.ReactNode }) {
+  return (
+    <span
+      className="inline-flex shrink-0 items-center"
+      style={{ gap: `calc(${TV.markGapRem}rem * var(--tv-scale, 1))` }}
+    >
+      {children}
+    </span>
+  );
 }
 
 function buildTvTokenItems(tokens: PublicToken[], keyPrefix: string): React.ReactNode[] {
@@ -258,10 +287,10 @@ function buildTvTokenItems(tokens: PublicToken[], keyPrefix: string): React.Reac
         const next = tokens[index + 1];
         if (next?.type === "blank") {
           items.push(
-            <span key={`${keyPrefix}-${index}-unit`} className="inline-flex shrink-0 items-center">
+            <TvPunctuationUnit key={`${keyPrefix}-${index}-unit`}>
               <TvPunctuation value={token.value} />
               <BlankTile token={next} size="tv" />
-            </span>,
+            </TvPunctuationUnit>,
           );
           index += 1;
           continue;
@@ -278,10 +307,10 @@ function buildTvTokenItems(tokens: PublicToken[], keyPrefix: string): React.Reac
     const next = tokens[index + 1];
     if (next?.type === "text" && isPunctuationOnly(next.value)) {
       items.push(
-        <span key={`${keyPrefix}-${index}-unit`} className="inline-flex shrink-0 items-center">
+        <TvPunctuationUnit key={`${keyPrefix}-${index}-unit`}>
           <BlankTile token={token} size="tv" />
           <TvPunctuation value={next.value} />
-        </span>,
+        </TvPunctuationUnit>,
       );
       index += 1;
       continue;
@@ -394,7 +423,7 @@ function getBlankStyle(length: number, size: "sm" | "md" | "lg" | "display" | "t
     return {
       height: `calc(${heightRem}rem * var(--tv-scale, 1))`,
       minWidth: `calc(${minWidthRem}rem * var(--tv-scale, 1))`,
-      fontSize: `calc(3rem * var(--tv-scale, 1))`,
+      fontSize: `calc(3.45rem * var(--tv-scale, 1))`,
     };
   }
 
@@ -500,7 +529,7 @@ function BlankTile({
       style={style}
       className={
         size === "tv"
-          ? `inline-flex items-center justify-center rounded-xl bg-[#fde047] font-black tabular-nums text-[#1a1612] shadow-[0_0_24px_rgba(253,224,71,0.35)] ring-[3px] ring-white ${className}`
+          ? `inline-flex items-center justify-center rounded-xl bg-[#d6a932] font-black tabular-nums text-[#17120b] shadow-[0_0_20px_rgba(214,169,50,0.28)] ring-[3px] ring-white/90 ${className}`
           : `inline-flex items-center justify-center rounded-md bg-surface-muted font-bold tabular-nums text-ink-bright ring-2 ring-ink/30 ${className}`
       }
       aria-label={`${token.length} letter blank`}
