@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+data/lyric-frequency/raw/
+data/lyric-frequency/lyric-stem-stats.json
