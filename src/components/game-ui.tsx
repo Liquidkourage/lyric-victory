@@ -39,6 +39,35 @@ function getTvEdgePadding(): string {
   return `calc(${TV.edgePaddingRem}rem * var(--tv-scale, 1))`;
 }
 
+function estimateBlankWidthRem(length: number): number {
+  return Math.max(TV.tileHeightRem, TV.tilePaddingRem * 2 + length * TV.charWidthRem);
+}
+
+function estimateTokenWidthRem(token: PublicToken): number {
+  if (token.type === "blank") {
+    return estimateBlankWidthRem(token.revealed && token.answer ? token.answer.length : token.length);
+  }
+
+  if (token.value === LINE_BREAK_MARKER || token.value.trim() === "") {
+    return 0;
+  }
+
+  if (isPunctuationOnly(token.value)) {
+    return TV.tileHeightRem * 0.35;
+  }
+
+  return token.value.length * 0.95;
+}
+
+function estimateLineWidthRem(tokens: PublicToken[]): number {
+  const visibleTokens = sanitizeLineTokensForTv(tokens);
+  const tokenGapRem = getSingleTileWidthRem() / 4;
+
+  return visibleTokens.reduce((total, token, index) => {
+    return total + estimateTokenWidthRem(token) + (index > 0 ? tokenGapRem : 0);
+  }, 0);
+}
+
 function sanitizeLineTokensForTv(tokens: PublicToken[]): PublicToken[] {
   return tokens.filter(
     (token) => !(token.type === "text" && (token.value === LINE_BREAK_MARKER || token.value.trim() === "")),
@@ -109,6 +138,85 @@ export function packLinesGreedy(lines: PublicLine[], maxLinesPerRow: number): Di
   return rows;
 }
 
+function packLinesBalanced(lines: PublicLine[], maxLinesPerRow: number): DisplayRow[] {
+  const visibleLines = lines
+    .map((line) => ({ ...line, tokens: sanitizeLineTokensForTv(line.tokens) }))
+    .filter((line) => line.tokens.length > 0);
+
+  if (visibleLines.length === 0) return [];
+
+  const rowCount = Math.ceil(visibleLines.length / maxLinesPerRow);
+  const tokenGapRem = getSingleTileWidthRem() / 4;
+  const lineWidths = visibleLines.map((line) => estimateLineWidthRem(line.tokens));
+  const separatorWidth = TV.tileHeightRem * 0.35 + tokenGapRem * 2;
+  const totalWidth =
+    lineWidths.reduce((sum, width) => sum + width, 0) +
+    Math.max(0, visibleLines.length - rowCount) * separatorWidth;
+  const targetWidth = totalWidth / rowCount;
+  const widthsByRange = new Map<string, number>();
+  const memo = new Map<string, { cost: number; groups: number[] }>();
+
+  const getRangeWidth = (start: number, end: number) => {
+    const key = `${start}-${end}`;
+    const cached = widthsByRange.get(key);
+    if (cached !== undefined) return cached;
+
+    const width =
+      lineWidths.slice(start, end).reduce((sum, lineWidth) => sum + lineWidth, 0) +
+      Math.max(0, end - start - 1) * separatorWidth;
+    widthsByRange.set(key, width);
+    return width;
+  };
+
+  const solve = (lineIndex: number, remainingRows: number): { cost: number; groups: number[] } => {
+    const key = `${lineIndex}-${remainingRows}`;
+    const cached = memo.get(key);
+    if (cached) return cached;
+
+    if (remainingRows === 0) {
+      return lineIndex === visibleLines.length
+        ? { cost: 0, groups: [] }
+        : { cost: Number.POSITIVE_INFINITY, groups: [] };
+    }
+
+    let best = { cost: Number.POSITIVE_INFINITY, groups: [] as number[] };
+    const remainingLines = visibleLines.length - lineIndex;
+    const minLinesThisRow = Math.max(1, remainingLines - (remainingRows - 1) * maxLinesPerRow);
+    const maxLinesThisRow = Math.min(maxLinesPerRow, remainingLines - (remainingRows - 1));
+
+    for (let count = minLinesThisRow; count <= maxLinesThisRow; count += 1) {
+      const width = getRangeWidth(lineIndex, lineIndex + count);
+      const next = solve(lineIndex + count, remainingRows - 1);
+      const cost = (width - targetWidth) ** 2 + next.cost;
+
+      if (cost < best.cost) {
+        best = { cost, groups: [count, ...next.groups] };
+      }
+    }
+
+    memo.set(key, best);
+    return best;
+  };
+
+  const groups = solve(0, rowCount).groups;
+  const rows: DisplayRow[] = [];
+  let lineIndex = 0;
+
+  for (const groupSize of groups) {
+    const segments: DisplayRowSegment[] = [];
+
+    for (let index = 0; index < groupSize; index += 1) {
+      if (index > 0) segments.push({ type: "slash" });
+      segments.push({ type: "line", tokens: visibleLines[lineIndex].tokens });
+      lineIndex += 1;
+    }
+
+    rows.push({ segments: normalizeRowSegments(segments) });
+  }
+
+  return rows;
+}
+
 function filterTrailingSlash(segments: DisplayRowSegment[]): DisplayRowSegment[] {
   return segments.filter(
     (segment, index) => !(segment.type === "slash" && index === segments.length - 1),
@@ -119,15 +227,20 @@ function isPunctuationOnly(value: string): boolean {
   return value.length > 0 && !/[a-zA-Z]/.test(value);
 }
 
-function TvPunctuation({ value }: { value: string }) {
+function TvBreakMark({ value, label }: { value: string; label: string }) {
   return (
     <span
-      className="inline-flex shrink-0 items-center px-[calc(0.25rem*var(--tv-scale,1))] font-black leading-none text-[#fde047] drop-shadow-[0_0_10px_rgba(253,224,71,0.45)]"
-      style={{ fontSize: `calc(3.25rem * var(--tv-scale, 1))` }}
+      className="inline-flex shrink-0 items-center self-center px-0.5 font-black leading-none text-[#fbbf24] drop-shadow-[0_0_16px_rgba(251,191,36,0.55)]"
+      style={{ fontSize: `calc(${TV.tileHeightRem}rem * var(--tv-scale, 1))` }}
+      aria-label={label}
     >
       {value}
     </span>
   );
+}
+
+function TvPunctuation({ value }: { value: string }) {
+  return <TvBreakMark value={value} label="Punctuation" />;
 }
 
 function buildTvTokenItems(tokens: PublicToken[], keyPrefix: string): React.ReactNode[] {
@@ -262,7 +375,7 @@ function TvLyricRow({ row }: { row: DisplayRow }) {
     >
       <div
         data-tv-row-inner
-        className="flex w-full max-w-full flex-nowrap items-center justify-between overflow-visible"
+        className="flex max-w-full flex-nowrap items-center justify-center overflow-visible"
         style={{ gap: tileGap }}
       >
         {items}
@@ -303,15 +416,7 @@ function getBlankClasses(size: "sm" | "md" | "lg" | "display" | "tv") {
 
 function LineBreakSlash({ size }: { size: "sm" | "md" | "lg" | "display" | "tv" }) {
   if (size === "tv") {
-    return (
-      <span
-        className="inline-flex shrink-0 items-center self-center px-0.5 font-black leading-none text-[#fbbf24] drop-shadow-[0_0_16px_rgba(251,191,36,0.55)]"
-        style={{ fontSize: `calc(${TV.tileHeightRem}rem * var(--tv-scale, 1))` }}
-        aria-label="Line break"
-      >
-        /
-      </span>
-    );
+    return <TvBreakMark value="/" label="Line break" />;
   }
 
   if (size === "display") {
@@ -460,7 +565,7 @@ export function ScaledLyricBoard({ lines }: { lines: PublicLine[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const [layout, setLayout] = useState<{ rows: DisplayRow[]; scale: number }>(() => ({
-    rows: packLinesGreedy(lines, 3),
+    rows: packLinesBalanced(lines, 3),
     scale: 1,
   }));
 
@@ -475,14 +580,14 @@ export function ScaledLyricBoard({ lines }: { lines: PublicLine[] }) {
       if (containerWidth <= 0 || containerHeight <= 0) return;
 
       let bestLayout = {
-        rows: packLinesGreedy(lines, 4),
+        rows: packLinesBalanced(lines, 4),
         scale: TV.minScale,
         fits: false,
         rowCount: Number.POSITIVE_INFINITY,
       };
 
       for (const maxLinesPerRow of getMaxLinesPerRowCandidates(lines.length)) {
-        const rows = packLinesGreedy(lines, maxLinesPerRow);
+        const rows = packLinesBalanced(lines, maxLinesPerRow);
 
         flushSync(() => {
           setLayout({ rows, scale: 1 });
