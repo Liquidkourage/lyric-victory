@@ -9,6 +9,7 @@ import {
   titlesMatch,
 } from "../lib/lyrics";
 import { generateRoomCode, normalizeRoomCode } from "../lib/room-code";
+import { getWordGuessPoints } from "../lib/lyric-scoring";
 import type {
   BeatState,
   HostGameState,
@@ -27,101 +28,6 @@ const ROOM_TTL_MS = 24 * 60 * 60 * 1000;
 const WORD_GUESS_COOLDOWN_MS = 2_500;
 const FREE_FOR_ALL_MS = 60_000;
 
-const COMMON_WORD_WEIGHTS = new Map<string, number>(
-  [
-    ["the", 0.35],
-    ["be", 0.35],
-    ["to", 0.35],
-    ["of", 0.35],
-    ["and", 0.35],
-    ["a", 0.35],
-    ["in", 0.35],
-    ["that", 0.4],
-    ["have", 0.4],
-    ["i", 0.4],
-    ["it", 0.4],
-    ["for", 0.45],
-    ["not", 0.45],
-    ["on", 0.45],
-    ["with", 0.45],
-    ["he", 0.45],
-    ["as", 0.45],
-    ["you", 0.45],
-    ["do", 0.45],
-    ["at", 0.45],
-    ["this", 0.5],
-    ["but", 0.5],
-    ["his", 0.5],
-    ["by", 0.5],
-    ["from", 0.5],
-    ["they", 0.55],
-    ["we", 0.55],
-    ["say", 0.55],
-    ["her", 0.55],
-    ["she", 0.55],
-    ["or", 0.55],
-    ["an", 0.55],
-    ["will", 0.55],
-    ["my", 0.55],
-    ["one", 0.6],
-    ["all", 0.6],
-    ["would", 0.6],
-    ["there", 0.6],
-    ["their", 0.6],
-    ["what", 0.65],
-    ["so", 0.65],
-    ["up", 0.65],
-    ["out", 0.65],
-    ["if", 0.65],
-    ["about", 0.7],
-    ["who", 0.7],
-    ["get", 0.7],
-    ["which", 0.7],
-    ["go", 0.7],
-    ["me", 0.7],
-    ["when", 0.75],
-    ["make", 0.75],
-    ["can", 0.75],
-    ["like", 0.75],
-    ["time", 0.75],
-    ["no", 0.75],
-    ["just", 0.8],
-    ["him", 0.8],
-    ["know", 0.8],
-    ["take", 0.8],
-    ["people", 0.85],
-    ["into", 0.85],
-    ["year", 0.85],
-    ["your", 0.85],
-    ["good", 0.9],
-    ["some", 0.9],
-    ["could", 0.9],
-    ["them", 0.9],
-    ["see", 0.9],
-    ["other", 0.95],
-    ["than", 0.95],
-    ["then", 0.95],
-    ["now", 0.95],
-    ["look", 0.95],
-    ["only", 1],
-    ["come", 1],
-    ["its", 1],
-    ["over", 1],
-    ["think", 1],
-    ["also", 1],
-    ["back", 1],
-    ["after", 1.05],
-    ["use", 1.05],
-    ["two", 1.05],
-    ["how", 1.05],
-    ["our", 1.05],
-    ["work", 1.1],
-    ["first", 1.1],
-    ["well", 1.1],
-    ["way", 1.1],
-    ["even", 1.1],
-  ] as const,
-);
 
 interface InternalRoom {
   code: string;
@@ -580,7 +486,7 @@ export class GameManager {
     let totalPoints = 0;
 
     matchingBlankIndexes.forEach((blankIndex) => {
-      const points = this.getWordGuessPoints(word, totalAppearances);
+      const points = getWordGuessPoints(word, totalAppearances);
       totalPoints += points;
       round.revealedBlankIndices.push(blankIndex);
       room.recentWordGuesses.unshift({
@@ -601,12 +507,6 @@ export class GameManager {
     return { accepted: true, points: totalPoints, count: matchingBlankIndexes.length };
   }
 
-  private getWordGuessPoints(word: string, totalAppearances: number) {
-    const frequencyWeight = COMMON_WORD_WEIGHTS.get(word) ?? Math.min(1.9, 1.05 + word.length * 0.08);
-    const lengthWeight = Math.max(0.8, Math.min(1.6, word.length / 5));
-    const repeatedWordDiscount = Math.sqrt(Math.max(1, totalAppearances));
-    return Math.max(10, Math.round((36 * frequencyWeight * lengthWeight) / repeatedWordDiscount));
-  }
 
   private getSongGuessPoints(rank: number, isFinalChance: boolean) {
     if (isFinalChance) return 75;
