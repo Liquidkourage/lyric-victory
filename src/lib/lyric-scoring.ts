@@ -37,6 +37,18 @@ const MANUAL_STEM_ALIASES: Record<string, string> = {
   baby: "babi",
   babies: "babi",
 
+  going: "go",
+  goin: "go",
+  goes: "go",
+
+  doing: "do",
+  doin: "do",
+
+  being: "be",
+
+  loving: "love",
+  lovin: "love",
+
   dance: "danc",
   dances: "danc",
   danced: "danc",
@@ -97,11 +109,15 @@ export function getLyricStemCandidates(rawWord: string) {
     addCandidate(candidates, `${word.slice(0, -1)}i`);
   }
 
-  if (word.endsWith("ing") && word.length > 5) {
+  if (word.endsWith("ing") && word.length > 4) {
     const base = word.slice(0, -3);
     addCandidate(candidates, base);
     addCandidate(candidates, stripDoubleFinal(base));
     addCandidate(candidates, `${base}e`);
+
+    if (base.endsWith("y") && base.length > 2) {
+      addCandidate(candidates, `${base.slice(0, -1)}i`);
+    }
   }
 
   if (word.endsWith("ed") && word.length > 4) {
