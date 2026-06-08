@@ -747,7 +747,7 @@ export function PhaseBadge({ phase }: { phase: string }) {
     "round-setup": "Round Setup",
     "word-guess": "Word Guessing",
     "song-guess": "Name That Song",
-    "between-rounds": "Between Rounds",
+    "between-rounds": "Open Rush",
     ended: "Game Over",
   };
 

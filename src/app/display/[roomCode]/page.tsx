@@ -37,10 +37,12 @@ export default function DisplayPage() {
 
   const phaseLabel =
     state?.phase === "song-guess"
-      ? "Name that song"
-      : state?.phase === "word-guess"
-        ? "Guess the words"
-        : "Song title hidden";
+      ? "Final title chance"
+      : state?.phase === "between-rounds"
+        ? "Open word rush"
+        : state?.phase === "word-guess"
+          ? "Guess words and title"
+          : "Song title hidden";
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden text-[#f4ede3]">
@@ -97,7 +99,7 @@ export default function DisplayPage() {
           </div>
 
           <aside className="grid min-h-0 grid-rows-4 gap-3">
-            <SidebarCard title="Beat">
+            <SidebarCard title={state?.phase === "between-rounds" ? "Rush Timer" : "Round"}>
               <BeatTimer
                 active={state?.beat.active ?? false}
                 endsAt={state?.beat.endsAt ?? null}
@@ -120,7 +122,7 @@ export default function DisplayPage() {
                         : "bg-white/10 text-white/50"
                     }`}
                   >
-                    {player.displayName}
+                    {player.displayName} - {player.score}
                   </span>
                 ))}
                 {(state?.players.length ?? 0) === 0 ? (
@@ -137,12 +139,13 @@ export default function DisplayPage() {
                     className="truncate rounded-lg bg-black/35 px-3 py-2 text-sm ring-1 ring-white/15"
                   >
                     <span className="font-bold text-white">{guess.playerName}</span>
-                    <span className="text-white/50"> → </span>
+                    <span className="text-white/50"> {"->"} </span>
                     <span className="font-black uppercase text-[#fde047]">{guess.word}</span>
+                    {guess.points ? <span className="text-white/60"> +{guess.points}</span> : null}
                   </div>
                 ))}
                 {(state?.recentWordGuesses.length ?? 0) === 0 ? (
-                  <p className="text-sm text-white/60">Word guesses appear each beat.</p>
+                  <p className="text-sm text-white/60">Word guesses appear live.</p>
                 ) : null}
               </div>
             </SidebarCard>
@@ -161,10 +164,11 @@ export default function DisplayPage() {
                     <span className="font-bold">{guess.playerName}</span>
                     <span className="text-white/45"> · </span>
                     <span>{guess.title}</span>
+                    {guess.points ? <span className="text-white/60"> +{guess.points}</span> : null}
                   </div>
                 ))}
                 {(state?.currentRound?.songGuesses.length ?? 0) === 0 ? (
-                  <p className="text-sm text-white/60">Song guesses show in that phase.</p>
+                  <p className="text-sm text-white/60">Song guesses appear live.</p>
                 ) : null}
               </div>
             </SidebarCard>

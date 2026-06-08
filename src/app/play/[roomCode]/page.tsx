@@ -3,7 +3,6 @@
 import { Suspense, useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import {
-  BeatTimer,
   LyricBoard,
   MusicBackdrop,
   Panel,
@@ -69,10 +68,19 @@ function PlayRoomContent() {
     }
   };
 
+  const currentPlayer = state?.players.find((player) => player.id === playerId);
+  const wordGuessingActive = state?.phase === "word-guess" || state?.phase === "between-rounds";
+  const songGuessingActive =
+    state?.phase === "word-guess" || state?.phase === "between-rounds" || state?.phase === "song-guess";
+
   const submitWordGuess = async () => {
-    const ok = await guessWord(wordGuess);
-    if (ok) {
-      setFeedback("Guess submitted for this beat.");
+    const result = await guessWord(wordGuess);
+    if (result.ok) {
+      setFeedback(
+        result.accepted
+          ? `Correct word! +${result.points ?? 0} points`
+          : "Word sent. Keep listening.",
+      );
       setWordGuess("");
     }
   };
@@ -80,7 +88,11 @@ function PlayRoomContent() {
   const submitSongGuess = async () => {
     const result = await guessSong(songGuess);
     if (result.ok) {
-      setFeedback(result.accepted ? "Correct song!" : "Submitted — waiting for match.");
+      setFeedback(
+        result.accepted
+          ? `Correct song! +${result.points ?? 0} points`
+          : "Title sent. Try again when it clicks.",
+      );
       if (result.accepted) setSongGuess("");
     }
   };
@@ -128,6 +140,12 @@ function PlayRoomContent() {
           </span>
         </div>
 
+
+        <Panel className="mb-4">
+          <p className="text-center text-sm font-semibold text-ink">
+            Score: {currentPlayer?.score ?? 0}
+          </p>
+        </Panel>
         {state?.announcement ? (
           <Panel className="mb-4">
             <p className="text-center text-sm font-medium text-ink">{state.announcement}</p>
@@ -148,15 +166,10 @@ function PlayRoomContent() {
           </Panel>
         )}
 
-        {state?.phase === "word-guess" ? (
+        {wordGuessingActive ? (
           <Panel title="Guess a Word" className="mb-4">
-            <BeatTimer
-              active={state.beat.active}
-              endsAt={state.beat.endsAt}
-              durationMs={state.beat.durationMs}
-            />
             <p className="my-3 text-sm text-[#c4b5a0]">
-              Submit whole words during each beat. All correct matches reveal on the TV board.
+              Submit whole words as they come to you. Correct matches reveal on the TV board.
             </p>
             <div className="flex gap-2">
               <input
@@ -165,14 +178,14 @@ function PlayRoomContent() {
                 placeholder="Your word guess"
                 className="input-dark flex-1 rounded-2xl px-4 py-3 text-sm"
               />
-              <PrimaryButton onClick={submitWordGuess} disabled={!state.beat.active || !wordGuess.trim()}>
+              <PrimaryButton onClick={submitWordGuess} disabled={!wordGuess.trim()}>
                 Send
               </PrimaryButton>
             </div>
           </Panel>
         ) : null}
 
-        {state?.phase === "song-guess" ? (
+        {songGuessingActive ? (
           <Panel title="Name That Song" className="mb-4">
             <div className="flex gap-2">
               <input
@@ -213,3 +226,4 @@ export default function PlayRoomPage() {
     </Suspense>
   );
 }
+

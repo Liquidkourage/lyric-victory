@@ -88,29 +88,29 @@ export function usePlayerGame(code: string, playerId: string | null) {
   }, [code, playerId]);
 
   const guessWord = (word: string) =>
-    new Promise<boolean>((resolve) => {
+    new Promise<{ ok: boolean; accepted?: boolean; points?: number }>((resolve) => {
       if (!playerId) {
-        resolve(false);
+        resolve({ ok: false });
         return;
       }
       getSocket().emit(
         "player:guess-word",
         { code, playerId, word },
-        (response: { ok: boolean; error?: string }) => {
+        (response: { ok: boolean; accepted?: boolean; points?: number; error?: string }) => {
           if (!response.ok) {
             setSubmitError(response.error ?? "Guess failed.");
-            resolve(false);
+            resolve({ ok: false });
             return;
           }
           setSubmitError(null);
           setLastGuess(word);
-          resolve(true);
+          resolve({ ok: true, accepted: response.accepted, points: response.points });
         },
       );
     });
 
   const guessSong = (title: string) =>
-    new Promise<{ ok: boolean; accepted?: boolean }>((resolve) => {
+    new Promise<{ ok: boolean; accepted?: boolean; points?: number; rank?: number }>((resolve) => {
       if (!playerId) {
         resolve({ ok: false });
         return;
@@ -118,14 +118,14 @@ export function usePlayerGame(code: string, playerId: string | null) {
       getSocket().emit(
         "player:guess-song",
         { code, playerId, title },
-        (response: { ok: boolean; accepted?: boolean; error?: string }) => {
+        (response: { ok: boolean; accepted?: boolean; points?: number; rank?: number; error?: string }) => {
           if (!response.ok) {
             setSubmitError(response.error ?? "Guess failed.");
             resolve({ ok: false });
             return;
           }
           setSubmitError(null);
-          resolve({ ok: true, accepted: response.accepted });
+          resolve({ ok: true, accepted: response.accepted, points: response.points, rank: response.rank });
         },
       );
     });

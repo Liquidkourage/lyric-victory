@@ -24,6 +24,104 @@ import type {
 
 const BEAT_DURATION_MS = 15_000;
 const ROOM_TTL_MS = 24 * 60 * 60 * 1000;
+const WORD_GUESS_COOLDOWN_MS = 2_500;
+const FREE_FOR_ALL_MS = 60_000;
+
+const COMMON_WORD_WEIGHTS = new Map<string, number>(
+  [
+    ["the", 0.35],
+    ["be", 0.35],
+    ["to", 0.35],
+    ["of", 0.35],
+    ["and", 0.35],
+    ["a", 0.35],
+    ["in", 0.35],
+    ["that", 0.4],
+    ["have", 0.4],
+    ["i", 0.4],
+    ["it", 0.4],
+    ["for", 0.45],
+    ["not", 0.45],
+    ["on", 0.45],
+    ["with", 0.45],
+    ["he", 0.45],
+    ["as", 0.45],
+    ["you", 0.45],
+    ["do", 0.45],
+    ["at", 0.45],
+    ["this", 0.5],
+    ["but", 0.5],
+    ["his", 0.5],
+    ["by", 0.5],
+    ["from", 0.5],
+    ["they", 0.55],
+    ["we", 0.55],
+    ["say", 0.55],
+    ["her", 0.55],
+    ["she", 0.55],
+    ["or", 0.55],
+    ["an", 0.55],
+    ["will", 0.55],
+    ["my", 0.55],
+    ["one", 0.6],
+    ["all", 0.6],
+    ["would", 0.6],
+    ["there", 0.6],
+    ["their", 0.6],
+    ["what", 0.65],
+    ["so", 0.65],
+    ["up", 0.65],
+    ["out", 0.65],
+    ["if", 0.65],
+    ["about", 0.7],
+    ["who", 0.7],
+    ["get", 0.7],
+    ["which", 0.7],
+    ["go", 0.7],
+    ["me", 0.7],
+    ["when", 0.75],
+    ["make", 0.75],
+    ["can", 0.75],
+    ["like", 0.75],
+    ["time", 0.75],
+    ["no", 0.75],
+    ["just", 0.8],
+    ["him", 0.8],
+    ["know", 0.8],
+    ["take", 0.8],
+    ["people", 0.85],
+    ["into", 0.85],
+    ["year", 0.85],
+    ["your", 0.85],
+    ["good", 0.9],
+    ["some", 0.9],
+    ["could", 0.9],
+    ["them", 0.9],
+    ["see", 0.9],
+    ["other", 0.95],
+    ["than", 0.95],
+    ["then", 0.95],
+    ["now", 0.95],
+    ["look", 0.95],
+    ["only", 1],
+    ["come", 1],
+    ["its", 1],
+    ["over", 1],
+    ["think", 1],
+    ["also", 1],
+    ["back", 1],
+    ["after", 1.05],
+    ["use", 1.05],
+    ["two", 1.05],
+    ["how", 1.05],
+    ["our", 1.05],
+    ["work", 1.1],
+    ["first", 1.1],
+    ["well", 1.1],
+    ["way", 1.1],
+    ["even", 1.1],
+  ] as const,
+);
 
 interface InternalRoom {
   code: string;
@@ -39,7 +137,9 @@ interface InternalRoom {
   announcement: string;
   recentWordGuesses: WordGuessEntry[];
   beatTimer: NodeJS.Timeout | null;
+  roundTimer: NodeJS.Timeout | null;
   pendingWordGuesses: Map<string, { playerId: string; word: string }>;
+  wordCooldowns: Map<string, number>;
   createdAt: number;
   updatedAt: number;
 }
@@ -69,7 +169,9 @@ export class GameManager {
         announcement: "Waiting for players to join…",
         recentWordGuesses: [],
         beatTimer: null,
+        roundTimer: null,
         pendingWordGuesses: new Map(),
+        wordCooldowns: new Map(),
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };
@@ -122,6 +224,7 @@ export class GameManager {
         id: playerId,
         displayName: trimmedName,
         connected: true,
+        score: 0,
       };
       room.players.set(playerId, player);
       room.socketToPlayer.set(socket.id, playerId);
@@ -227,6 +330,9 @@ export class GameManager {
         return;
       }
       room.rounds = room.pendingRounds.map((round) => this.buildRoundState(round));
+      room.players.forEach((player) => {
+        player.score = 0;
+      });
       room.currentRoundIndex = 0;
       room.phase = "round-setup";
       room.announcement = "Round 1 — guess the words!";
@@ -241,11 +347,14 @@ export class GameManager {
         callback({ ok: false, error: "No active round." });
         return;
       }
+      this.clearBeatTimer(room);
+      this.clearRoundTimer(room);
       room.phase = "word-guess";
       room.beat = { number: 0, active: false, durationMs: BEAT_DURATION_MS, endsAt: null };
       room.recentWordGuesses = [];
       room.pendingWordGuesses.clear();
-      room.announcement = "Word guessing begins — wait for the beat!";
+      room.wordCooldowns.clear();
+      room.announcement = "Guess words now. Name the song any time.";
       room.updatedAt = Date.now();
       callback({ ok: true });
       this.broadcast(code);
@@ -257,7 +366,7 @@ export class GameManager {
         callback({ ok: false, error: "Word phase is not active." });
         return;
       }
-      this.startBeat(room);
+      room.announcement = "Word guessing is always live.";
       callback({ ok: true });
       this.broadcast(code);
     });
@@ -268,7 +377,7 @@ export class GameManager {
         callback({ ok: false, error: "Word phase is not active." });
         return;
       }
-      this.resolveBeat(room);
+      room.announcement = "Word guesses resolve as soon as they arrive.";
       callback({ ok: true });
       this.broadcast(code);
     });
@@ -280,9 +389,10 @@ export class GameManager {
         return;
       }
       this.clearBeatTimer(room);
+      this.clearRoundTimer(room);
       room.phase = "song-guess";
       room.beat = { number: room.beat.number, active: false, durationMs: BEAT_DURATION_MS, endsAt: null };
-      room.announcement = "Name that song!";
+      room.announcement = "Final title chance. Players who have not solved it get one guess.";
       room.updatedAt = Date.now();
       callback({ ok: true });
       this.broadcast(code);
@@ -305,6 +415,8 @@ export class GameManager {
         room.recentWordGuesses = [];
       }
       this.clearBeatTimer(room);
+      this.clearRoundTimer(room);
+      room.wordCooldowns.clear();
       room.beat = { number: 0, active: false, durationMs: BEAT_DURATION_MS, endsAt: null };
       room.updatedAt = Date.now();
       callback({ ok: true });
@@ -320,6 +432,7 @@ export class GameManager {
       room.phase = "ended";
       room.announcement = "Game ended by host.";
       this.clearBeatTimer(room);
+      this.clearRoundTimer(room);
       room.updatedAt = Date.now();
       callback({ ok: true });
       this.broadcast(code);
@@ -327,8 +440,8 @@ export class GameManager {
 
     socket.on("player:guess-word", ({ code, playerId, word }, callback) => {
       const room = this.getRoom(code);
-      if (!room || room.phase !== "word-guess" || !room.beat.active) {
-        callback({ ok: false, error: "Beat is not active." });
+      if (!room || !["word-guess", "between-rounds"].includes(room.phase) || room.currentRoundIndex < 0) {
+        callback({ ok: false, error: "Word guessing is not active." });
         return;
       }
       const player = room.players.get(playerId);
@@ -341,13 +454,30 @@ export class GameManager {
         callback({ ok: false, error: "Enter a word." });
         return;
       }
-      room.pendingWordGuesses.set(playerId, { playerId, word: normalizedWord });
-      callback({ ok: true, queued: true });
+
+      const now = Date.now();
+      const cooldownUntil = room.wordCooldowns.get(playerId) ?? 0;
+      if (room.phase === "word-guess" && cooldownUntil > now) {
+        callback({
+          ok: false,
+          error: `Hold up ${Math.ceil((cooldownUntil - now) / 1000)}s before another word.`,
+        });
+        return;
+      }
+
+      if (room.phase === "word-guess") {
+        room.wordCooldowns.set(playerId, now + WORD_GUESS_COOLDOWN_MS);
+      }
+
+      const result = this.applyWordGuess(room, player, normalizedWord, now);
+      room.updatedAt = now;
+      callback({ ok: true, accepted: result.accepted, points: result.points });
+      this.broadcast(code);
     });
 
     socket.on("player:guess-song", ({ code, playerId, title }, callback) => {
       const room = this.getRoom(code);
-      if (!room || room.phase !== "song-guess" || room.currentRoundIndex < 0) {
+      if (!room || !["word-guess", "between-rounds", "song-guess"].includes(room.phase) || room.currentRoundIndex < 0) {
         callback({ ok: false, error: "Song guessing is not active." });
         return;
       }
@@ -362,25 +492,44 @@ export class GameManager {
         callback({ ok: false, error: "Enter a song title." });
         return;
       }
+      if (round.songGuesses.some((guess) => guess.playerId === playerId && guess.accepted)) {
+        callback({ ok: false, error: "You already named this song." });
+        return;
+      }
+      if (room.phase === "song-guess" && round.finalTitleAttempts.includes(playerId)) {
+        callback({ ok: false, error: "Final title chance already used." });
+        return;
+      }
 
+      const now = Date.now();
       const accepted = titlesMatch(normalizedTitle, round.title);
+      const rank = accepted ? round.songGuesses.filter((guess) => guess.accepted).length + 1 : undefined;
+      const points = accepted ? this.getSongGuessPoints(rank!, room.phase === "song-guess") : 0;
+      if (accepted) {
+        player.score += points;
+      }
+      if (room.phase === "song-guess") {
+        round.finalTitleAttempts.push(playerId);
+      }
+
       const entry: SongGuessEntry = {
         playerId,
         playerName: player.displayName,
         title: normalizedTitle,
         accepted,
-        submittedAt: Date.now(),
+        submittedAt: now,
+        points,
+        rank,
       };
 
-      const existingIndex = round.songGuesses.findIndex((guess) => guess.playerId === playerId);
-      if (existingIndex >= 0) {
-        round.songGuesses[existingIndex] = entry;
-      } else {
-        round.songGuesses.push(entry);
+      round.songGuesses.push(entry);
+
+      if (accepted && !round.songSolvedAt && room.phase === "word-guess") {
+        this.startFreeForAll(room, now);
       }
 
-      room.updatedAt = Date.now();
-      callback({ ok: true, accepted });
+      room.updatedAt = now;
+      callback({ ok: true, accepted, points, rank });
       this.broadcast(code);
     });
 
@@ -400,6 +549,93 @@ export class GameManager {
         this.broadcast(room.code);
       }
     });
+  }
+
+  private applyWordGuess(room: InternalRoom, player: Player, word: string, submittedAt: number) {
+    const round = room.rounds[room.currentRoundIndex];
+    if (!round) return { accepted: false, points: 0 };
+
+    const matchingBlankIndexes = round.tokens
+      .filter((token) => token.type === "blank")
+      .map((token) => token.index)
+      .filter((index) => !round.revealedBlankIndices.includes(index))
+      .filter((index) => normalizeWordGuess(round.answers[index] ?? "") === word);
+
+    if (matchingBlankIndexes.length === 0) {
+      room.recentWordGuesses.unshift({
+        playerId: player.id,
+        playerName: player.displayName,
+        word,
+        blankIndex: -1,
+        beatNumber: 0,
+        accepted: false,
+        points: 0,
+        submittedAt,
+      });
+      room.recentWordGuesses = room.recentWordGuesses.slice(0, 12);
+      return { accepted: false, points: 0 };
+    }
+
+    const totalAppearances = round.answers.filter((answer) => normalizeWordGuess(answer) === word).length;
+    let totalPoints = 0;
+
+    matchingBlankIndexes.forEach((blankIndex) => {
+      const points = this.getWordGuessPoints(word, totalAppearances);
+      totalPoints += points;
+      round.revealedBlankIndices.push(blankIndex);
+      room.recentWordGuesses.unshift({
+        playerId: player.id,
+        playerName: player.displayName,
+        word,
+        blankIndex,
+        beatNumber: 0,
+        accepted: true,
+        points,
+        submittedAt,
+      });
+    });
+
+    player.score += totalPoints;
+    room.recentWordGuesses = room.recentWordGuesses.slice(0, 12);
+    room.announcement = `${player.displayName} found ${word.toUpperCase()} for ${totalPoints} points!`;
+    return { accepted: true, points: totalPoints };
+  }
+
+  private getWordGuessPoints(word: string, totalAppearances: number) {
+    const frequencyWeight = COMMON_WORD_WEIGHTS.get(word) ?? Math.min(1.9, 1.05 + word.length * 0.08);
+    const lengthWeight = Math.max(0.8, Math.min(1.6, word.length / 5));
+    const repeatedWordDiscount = Math.sqrt(Math.max(1, totalAppearances));
+    return Math.max(10, Math.round((36 * frequencyWeight * lengthWeight) / repeatedWordDiscount));
+  }
+
+  private getSongGuessPoints(rank: number, isFinalChance: boolean) {
+    if (isFinalChance) return 75;
+    if (rank === 1) return 500;
+    if (rank === 2) return 350;
+    if (rank === 3) return 250;
+    return Math.max(100, 250 - (rank - 3) * 25);
+  }
+
+  private startFreeForAll(room: InternalRoom, now: number) {
+    const round = room.rounds[room.currentRoundIndex];
+    if (!round) return;
+
+    this.clearBeatTimer(room);
+    this.clearRoundTimer(room);
+    room.phase = "between-rounds";
+    room.beat = { number: room.beat.number, active: true, durationMs: FREE_FOR_ALL_MS, endsAt: now + FREE_FOR_ALL_MS };
+    room.wordCooldowns.clear();
+    round.songSolvedAt = now;
+    round.freeForAllEndsAt = now + FREE_FOR_ALL_MS;
+    room.announcement = "Song named! Open word rush for 60 seconds.";
+
+    room.roundTimer = setTimeout(() => {
+      room.phase = "song-guess";
+      room.beat = { number: room.beat.number, active: false, durationMs: BEAT_DURATION_MS, endsAt: null };
+      room.announcement = "Final title chance. Players who have not solved it get one guess.";
+      room.updatedAt = Date.now();
+      this.broadcast(room.code);
+    }, FREE_FOR_ALL_MS);
   }
 
   private startBeat(room: InternalRoom) {
@@ -472,6 +708,13 @@ export class GameManager {
     }
   }
 
+  private clearRoundTimer(room: InternalRoom) {
+    if (room.roundTimer) {
+      clearTimeout(room.roundTimer);
+      room.roundTimer = null;
+    }
+  }
+
   private buildRoundState(round: RoundConfig): RoundState {
     const parsed = attachAnswers(parseLyricTemplate(round.template), round.answers);
     return {
@@ -483,6 +726,9 @@ export class GameManager {
       answers: parsed.answers,
       revealedBlankIndices: [],
       songGuesses: [],
+      songSolvedAt: null,
+      freeForAllEndsAt: null,
+      finalTitleAttempts: [],
     };
   }
 
@@ -531,6 +777,7 @@ export class GameManager {
       currentRoundIndex: room.currentRoundIndex,
       totalRounds: room.rounds.length,
       beat: { ...room.beat },
+      phaseEndsAt: this.getPhaseEndsAt(room),
       recentWordGuesses: room.recentWordGuesses,
       roundHistory: [],
     };
@@ -580,11 +827,18 @@ export class GameManager {
     };
   }
 
+  private getPhaseEndsAt(room: InternalRoom) {
+    const round = room.currentRoundIndex >= 0 ? room.rounds[room.currentRoundIndex] : null;
+    if (room.phase === "between-rounds") return round?.freeForAllEndsAt ?? null;
+    return null;
+  }
+
   private pruneRooms() {
     const cutoff = Date.now() - ROOM_TTL_MS;
     for (const [code, room] of this.rooms.entries()) {
       if (room.updatedAt < cutoff) {
         this.clearBeatTimer(room);
+        this.clearRoundTimer(room);
         this.rooms.delete(code);
       }
     }

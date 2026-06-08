@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
-  BeatTimer,
   CollapsiblePanel,
   HostRoundSummary,
   MusicBackdrop,
@@ -30,9 +29,6 @@ export default function HostRoomPage() {
     setAnnouncement,
     startGame,
     startWordPhase,
-    startBeat,
-    endBeat,
-    startSongPhase,
     nextRound,
     endGame,
   } = useHostGame(roomCode, hostToken);
@@ -230,31 +226,13 @@ export default function HostRoomPage() {
 
           <div className="space-y-6">
             <CollapsiblePanel title="Live Controls" defaultOpen>
-              <BeatTimer
-                active={state?.beat.active ?? false}
-                endsAt={state?.beat.endsAt ?? null}
-                durationMs={state?.beat.durationMs ?? 15000}
-              />
-              <div className="mt-4 grid gap-2">
+              <div className="grid gap-2">
                 {state?.phase === "round-setup" ? (
                   <PrimaryButton onClick={() => runHostAction(startWordPhase)}>
-                    Start Word Guessing
+                    Start Round
                   </PrimaryButton>
                 ) : null}
-                {state?.phase === "word-guess" ? (
-                  <>
-                    <PrimaryButton onClick={() => runHostAction(startBeat)}>
-                      Start Beat
-                    </PrimaryButton>
-                    <SecondaryButton onClick={() => runHostAction(endBeat)}>
-                      End Beat Early
-                    </SecondaryButton>
-                    <SecondaryButton onClick={() => runHostAction(startSongPhase)}>
-                      Move to Song Guess
-                    </SecondaryButton>
-                  </>
-                ) : null}
-                {state?.phase === "song-guess" ? (
+                {state?.phase === "word-guess" || state?.phase === "between-rounds" || state?.phase === "song-guess" ? (
                   <PrimaryButton onClick={() => runHostAction(nextRound)}>
                     Next Round / End Game
                   </PrimaryButton>
@@ -264,7 +242,6 @@ export default function HostRoomPage() {
                 ) : null}
               </div>
             </CollapsiblePanel>
-
             <CollapsiblePanel title="Announcement" defaultOpen={false}>
               <textarea
                 value={announcementDraft}
@@ -288,7 +265,7 @@ export default function HostRoomPage() {
                         : "bg-surface-muted text-[#8a7d6b]"
                     }`}
                   >
-                    {player.displayName}
+                    {player.displayName} - {player.score}
                   </span>
                 ))}
               </div>
@@ -336,3 +313,4 @@ export default function HostRoomPage() {
     </MusicBackdrop>
   );
 }
+

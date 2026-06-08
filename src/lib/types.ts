@@ -10,6 +10,7 @@ export interface Player {
   id: string;
   displayName: string;
   connected: boolean;
+  score: number;
 }
 
 export interface BlankToken {
@@ -48,6 +49,9 @@ export interface RoundState {
   answers: string[];
   revealedBlankIndices: number[];
   songGuesses: SongGuessEntry[];
+  songSolvedAt: number | null;
+  freeForAllEndsAt: number | null;
+  finalTitleAttempts: string[];
 }
 
 export interface BeatState {
@@ -64,6 +68,8 @@ export interface WordGuessEntry {
   blankIndex: number;
   beatNumber: number;
   accepted: boolean;
+  points?: number;
+  submittedAt?: number;
 }
 
 export interface SongGuessEntry {
@@ -72,6 +78,8 @@ export interface SongGuessEntry {
   title: string;
   accepted: boolean;
   submittedAt: number;
+  points?: number;
+  rank?: number;
 }
 
 export interface PublicGameState {
@@ -83,6 +91,7 @@ export interface PublicGameState {
   currentRoundIndex: number;
   totalRounds: number;
   beat: BeatState;
+  phaseEndsAt: number | null;
   recentWordGuesses: WordGuessEntry[];
   roundHistory: { title: string; artist: string }[];
 }
