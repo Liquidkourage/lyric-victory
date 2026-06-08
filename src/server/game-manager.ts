@@ -9,7 +9,7 @@ import {
   titlesMatch,
 } from "../lib/lyrics";
 import { generateRoomCode, normalizeRoomCode } from "../lib/room-code";
-import { getWordGuessPoints } from "../lib/lyric-scoring";
+import { getWordGuessPointValues } from "../lib/lyric-scoring";
 import type {
   BeatState,
   HostGameState,
@@ -482,11 +482,16 @@ export class GameManager {
       return { accepted: false, points: 0, count: 0 };
     }
 
-    const totalAppearances = round.answers.filter((answer) => normalizeWordGuess(answer) === word).length;
+    const allMatchingBlankIndexes = round.tokens
+      .filter((token) => token.type === "blank")
+      .map((token) => token.index)
+      .filter((index) => normalizeWordGuess(round.answers[index] ?? "") === word);
+    const pointValues = getWordGuessPointValues(word, allMatchingBlankIndexes.length);
     let totalPoints = 0;
 
     matchingBlankIndexes.forEach((blankIndex) => {
-      const points = getWordGuessPoints(word, totalAppearances);
+      const occurrenceIndex = allMatchingBlankIndexes.indexOf(blankIndex);
+      const points = pointValues[occurrenceIndex] ?? pointValues[0] ?? 0;
       totalPoints += points;
       round.revealedBlankIndices.push(blankIndex);
       room.recentWordGuesses.unshift({

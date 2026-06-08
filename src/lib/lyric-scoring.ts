@@ -4,6 +4,7 @@ import { LYRIC_STEM_RANKS } from "./lyric-stem-ranks";
 export const MIN_WORD_POINTS = 10;
 export const MAX_WORD_POINTS = 100;
 export const WORD_RARITY_SCALE = 18;
+export const REPEATED_WORD_DECAY = 0.8;
 
 type LyricScoreSource = "override" | "corpus" | "fallback";
 
@@ -13,6 +14,8 @@ export type LyricWordScoreBreakdown = {
   rank: number;
   basePoints: number;
   pointsPerBlank: number;
+  pointValues: number[];
+  totalPoints: number;
   totalAppearances: number;
   source: LyricScoreSource;
   stemCandidates: string[];
@@ -154,6 +157,14 @@ export function getBaseWordPointsFromRank(rank: number) {
   );
 }
 
+function getProgressivePointValues(basePoints: number, totalAppearances: number) {
+  const count = Math.max(1, totalAppearances);
+
+  return Array.from({ length: count }, (_, index) =>
+    Math.max(1, Math.round(basePoints * REPEATED_WORD_DECAY ** index)),
+  );
+}
+
 export function getLyricWordScoreBreakdown(
   rawWord: string,
   totalAppearances: number,
@@ -168,6 +179,8 @@ export function getLyricWordScoreBreakdown(
       rank: 0,
       basePoints: MIN_WORD_POINTS,
       pointsPerBlank: MIN_WORD_POINTS,
+      pointValues: [MIN_WORD_POINTS],
+      totalPoints: MIN_WORD_POINTS,
       totalAppearances,
       source: "fallback",
       stemCandidates,
@@ -192,11 +205,9 @@ export function getLyricWordScoreBreakdown(
   const overrideBasePoints = LYRIC_BASE_POINT_OVERRIDES[word];
   const rank = matchedRank ?? getFallbackLyricRank(word);
   const basePoints = overrideBasePoints ?? getBaseWordPointsFromRank(rank);
-  const repeatedWordDiscount = Math.sqrt(Math.max(1, totalAppearances));
-  const pointsPerBlank = Math.max(
-    MIN_WORD_POINTS,
-    Math.round(basePoints / repeatedWordDiscount),
-  );
+  const pointValues = getProgressivePointValues(basePoints, totalAppearances);
+  const totalPoints = pointValues.reduce((sum, value) => sum + value, 0);
+  const pointsPerBlank = pointValues[0] ?? basePoints;
 
   return {
     word,
@@ -204,10 +215,20 @@ export function getLyricWordScoreBreakdown(
     rank,
     basePoints,
     pointsPerBlank,
+    pointValues,
+    totalPoints,
     totalAppearances,
     source: overrideBasePoints !== undefined ? "override" : matchedRank ? "corpus" : "fallback",
     stemCandidates,
   };
+}
+
+export function getWordGuessPointValues(word: string, totalAppearances: number) {
+  return getLyricWordScoreBreakdown(word, totalAppearances).pointValues;
+}
+
+export function getWordGuessTotalPoints(word: string, totalAppearances: number) {
+  return getLyricWordScoreBreakdown(word, totalAppearances).totalPoints;
 }
 
 export function getWordGuessPoints(word: string, totalAppearances: number) {
