@@ -30,9 +30,27 @@ function PlayRoomContent() {
   const [wordGuess, setWordGuess] = useState("");
   const [songGuess, setSongGuess] = useState("");
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [wordCooldownUntil, setWordCooldownUntil] = useState<number | null>(null);
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   const { state, connected, submitError, joinError: socketJoinError, guessWord, guessSong } =
     usePlayerGame(roomCode, playerId);
+
+  useEffect(() => {
+    if (!wordCooldownUntil) return;
+
+    const interval = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, 250);
+
+    return () => window.clearInterval(interval);
+  }, [wordCooldownUntil]);
+
+  useEffect(() => {
+    if (wordCooldownUntil && wordCooldownUntil <= nowMs) {
+      setWordCooldownUntil(null);
+    }
+  }, [wordCooldownUntil, nowMs]);
 
   useEffect(() => {
     const storedId = getStoredPlayerId(roomCode);
@@ -70,18 +88,29 @@ function PlayRoomContent() {
 
   const currentPlayer = state?.players.find((player) => player.id === playerId);
   const wordGuessingActive = state?.phase === "word-guess" || state?.phase === "between-rounds";
+  const wordCooldownRemainingMs = wordCooldownUntil ? Math.max(0, wordCooldownUntil - nowMs) : 0;
+  const wordCooldownRemainingSeconds = Math.ceil(wordCooldownRemainingMs / 1000);
+  const wordSubmitDisabled = !wordGuess.trim() || wordCooldownRemainingMs > 0;
   const songGuessingActive =
     state?.phase === "word-guess" || state?.phase === "between-rounds" || state?.phase === "song-guess";
 
   const submitWordGuess = async () => {
     const result = await guessWord(wordGuess);
     if (result.ok) {
+      if (result.cooldownUntil) {
+        setWordCooldownUntil(result.cooldownUntil);
+        setNowMs(Date.now());
+      }
+
       setFeedback(
         result.accepted
           ? `Correct word${(result.count ?? 0) > 1 ? ` x${result.count}` : ""}! +${result.points ?? 0} points`
           : "Word sent. Keep listening.",
       );
       setWordGuess("");
+    } else if (result.cooldownUntil) {
+      setWordCooldownUntil(result.cooldownUntil);
+      setNowMs(Date.now());
     }
   };
 
@@ -178,8 +207,8 @@ function PlayRoomContent() {
                 placeholder="Your word guess"
                 className="input-dark flex-1 rounded-2xl px-4 py-3 text-sm"
               />
-              <PrimaryButton onClick={submitWordGuess} disabled={!wordGuess.trim()}>
-                Send
+              <PrimaryButton onClick={submitWordGuess} disabled={wordSubmitDisabled}>
+                {wordCooldownRemainingMs > 0 ? `${wordCooldownRemainingSeconds}s` : "Send"}
               </PrimaryButton>
             </div>
           </Panel>

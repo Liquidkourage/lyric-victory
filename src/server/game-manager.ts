@@ -25,7 +25,7 @@ import type {
 
 const BEAT_DURATION_MS = 15_000;
 const ROOM_TTL_MS = 24 * 60 * 60 * 1000;
-const WORD_GUESS_COOLDOWN_MS = 2_500;
+const WORD_GUESS_COOLDOWN_MS = 10_000;
 const FREE_FOR_ALL_MS = 60_000;
 
 
@@ -363,21 +363,30 @@ export class GameManager {
 
       const now = Date.now();
       const cooldownUntil = room.wordCooldowns.get(playerId) ?? 0;
-      if (room.phase === "word-guess" && cooldownUntil > now) {
+      if (cooldownUntil > now) {
         callback({
           ok: false,
           error: `Hold up ${Math.ceil((cooldownUntil - now) / 1000)}s before another word.`,
+          cooldownUntil,
         });
         return;
       }
 
-      if (room.phase === "word-guess") {
-        room.wordCooldowns.set(playerId, now + WORD_GUESS_COOLDOWN_MS);
+      const result = this.applyWordGuess(room, player, normalizedWord, now);
+      const nextCooldownUntil = result.accepted && result.points > 0 ? now + WORD_GUESS_COOLDOWN_MS : null;
+
+      if (nextCooldownUntil) {
+        room.wordCooldowns.set(playerId, nextCooldownUntil);
       }
 
-      const result = this.applyWordGuess(room, player, normalizedWord, now);
       room.updatedAt = now;
-      callback({ ok: true, accepted: result.accepted, points: result.points, count: result.count });
+      callback({
+        ok: true,
+        accepted: result.accepted,
+        points: result.points,
+        count: result.count,
+        cooldownUntil: nextCooldownUntil,
+      });
       this.broadcast(code);
     });
 
@@ -529,7 +538,6 @@ export class GameManager {
     this.clearRoundTimer(room);
     room.phase = "between-rounds";
     room.beat = { number: room.beat.number, active: true, durationMs: FREE_FOR_ALL_MS, endsAt: now + FREE_FOR_ALL_MS };
-    room.wordCooldowns.clear();
     round.songSolvedAt = now;
     round.freeForAllEndsAt = now + FREE_FOR_ALL_MS;
     room.announcement = "Song named! Open word rush for 60 seconds.";

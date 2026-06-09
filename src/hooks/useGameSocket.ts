@@ -88,7 +88,7 @@ export function usePlayerGame(code: string, playerId: string | null) {
   }, [code, playerId]);
 
   const guessWord = (word: string) =>
-    new Promise<{ ok: boolean; accepted?: boolean; points?: number; count?: number }>((resolve) => {
+    new Promise<{ ok: boolean; accepted?: boolean; points?: number; count?: number; cooldownUntil?: number | null }>((resolve) => {
       if (!playerId) {
         resolve({ ok: false });
         return;
@@ -96,15 +96,21 @@ export function usePlayerGame(code: string, playerId: string | null) {
       getSocket().emit(
         "player:guess-word",
         { code, playerId, word },
-        (response: { ok: boolean; accepted?: boolean; points?: number; count?: number; error?: string }) => {
+        (response: { ok: boolean; accepted?: boolean; points?: number; count?: number; cooldownUntil?: number | null; error?: string }) => {
           if (!response.ok) {
             setSubmitError(response.error ?? "Guess failed.");
-            resolve({ ok: false });
+            resolve({ ok: false, cooldownUntil: response.cooldownUntil });
             return;
           }
           setSubmitError(null);
           setLastGuess(word);
-          resolve({ ok: true, accepted: response.accepted, points: response.points, count: response.count });
+          resolve({
+              ok: true,
+              accepted: response.accepted,
+              points: response.points,
+              count: response.count,
+              cooldownUntil: response.cooldownUntil,
+            });
         },
       );
     });
