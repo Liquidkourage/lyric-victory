@@ -8,7 +8,7 @@ import {
   Panel,
   PhaseBadge,
   PrimaryButton,
-  RoomCodeBadge,
+  SecondaryButton,
 } from "@/components/game-ui";
 import {
   getStoredPlayerId,
@@ -178,69 +178,46 @@ function PlayRoomContent() {
 
   return (
     <MusicBackdrop>
-      <main className="mx-auto max-w-lg px-4 py-6">
-        <header className="mb-4 flex items-center justify-between gap-3">
+      <main className="mx-auto flex min-h-full max-w-lg flex-col px-4 py-4 sm:max-w-xl">
+        <header className="mb-3 flex items-center justify-between gap-3">
           <div>
-            <p className="text-sm font-semibold text-ink">{displayName}</p>
-            <h1 className="font-display text-2xl font-black text-[#f4ede3]">Lyric Victory</h1>
+            <p className="text-base font-black text-[#f4ede3]">{displayName}</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-[#8a7d6b]">Lyric Victory</p>
           </div>
-          <RoomCodeBadge code={roomCode} />
+          {state ? <PhaseBadge phase={state.phase} /> : null}
         </header>
 
-        <div className="mb-3 grid grid-cols-3 gap-2">
-          <div className="rounded-2xl bg-surface/90 px-3 py-2 text-center ring-1 ring-ink/20">
+        <div className="mb-3 grid grid-cols-[1fr_1.2fr_1fr] gap-2">
+          <div className="rounded-xl bg-surface/90 px-3 py-2 text-center ring-1 ring-ink/20">
             <p className="text-[10px] font-semibold uppercase tracking-wide text-[#8a7d6b]">Score</p>
-            <p className="text-lg font-black text-ink">{currentPlayer?.score ?? 0}</p>
+            <p className="text-xl font-black text-ink">{currentPlayer?.score ?? 0}</p>
           </div>
-          <div className="rounded-2xl bg-surface/90 px-3 py-2 text-center ring-1 ring-ink/20">
+          <div
+            className={`rounded-xl px-3 py-2 text-center ring-1 ${
+              answerLocked
+                ? "bg-red-950/70 ring-red-400/40"
+                : "bg-surface/90 ring-ink/20"
+            }`}
+          >
             <p className="text-[10px] font-semibold uppercase tracking-wide text-[#8a7d6b]">Lockout</p>
-            <p className={`text-lg font-black ${answerLocked ? "text-red-300" : "text-success"}`}>
+            <p className={`text-xl font-black ${answerLocked ? "text-red-200" : "text-success"}`}>
               {answerLocked ? `${wordCooldownRemainingSeconds}s` : "Ready"}
             </p>
           </div>
-          <div className="rounded-2xl bg-surface/90 px-3 py-2 text-center ring-1 ring-ink/20">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-[#8a7d6b]">Status</p>
-            <p className={`truncate text-sm font-bold ${connected ? "text-success" : "text-red-400"}`}>
-              {connected ? "Live" : "Offline"}
-            </p>
+          <div className="rounded-xl bg-surface/90 px-3 py-2 text-center ring-1 ring-ink/20">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-[#8a7d6b]">Room</p>
+            <p className="font-mono text-xl font-black tracking-wide text-ink">{roomCode}</p>
           </div>
         </div>
 
-        <div className="mb-3 flex items-center justify-between">
-          {state ? <PhaseBadge phase={state.phase} /> : null}
-          <RoomCodeBadge code={roomCode} compact />
-        </div>
-
-        {feedback || submitError ? (
-          <p className="mb-3 rounded-xl bg-surface-muted px-4 py-3 text-sm font-medium text-ink ring-1 ring-ink/20">
-            {submitError ?? feedback}
+        {!connected ? (
+          <p className="mb-3 rounded-xl bg-red-950/60 px-4 py-2 text-center text-sm font-semibold text-red-300 ring-1 ring-red-500/30">
+            Reconnecting...
           </p>
         ) : null}
 
-        {state?.announcement ? (
-          <Panel className="mb-3">
-            <p className="text-center text-sm font-medium text-ink">{state.announcement}</p>
-          </Panel>
-        ) : null}
-
-        {state?.currentRound ? (
-          <Panel title="Lyrics" className="mb-3">
-            <div className="max-h-28 overflow-hidden">
-              <LyricBoard lines={state.currentRound.lines} size="sm" />
-            </div>
-          </Panel>
-        ) : (
-          <Panel className="mb-3">
-            <p className="text-center text-sm text-[#c4b5a0]">
-              {state?.phase === "lobby"
-                ? "Waiting for the host to start the game..."
-                : "Waiting for the next round..."}
-            </p>
-          </Panel>
-        )}
-
         {wordGuessingActive || songGuessingActive ? (
-          <Panel title={activeAnswerMode === "song" ? "Guess the Song" : "Answer"} className="mb-4">
+          <Panel title={activeAnswerMode === "song" ? "Guess the song" : "Guess a missing word"} className="mb-3">
             <div className="mb-3 flex gap-2">
               <input
                 value={answerValue}
@@ -252,29 +229,55 @@ function PlayRoomContent() {
                   }
                 }}
                 placeholder={answerPlaceholder}
-                className="input-dark min-h-14 flex-1 rounded-2xl px-4 py-4 text-base font-semibold"
+                className="input-dark min-h-16 min-w-0 flex-1 rounded-2xl px-4 py-4 text-lg font-black"
               />
               <PrimaryButton onClick={submitAnswer} disabled={answerDisabled} className="min-w-24">
                 {answerSubmitLabel}
               </PrimaryButton>
             </div>
-            <div className="flex gap-2">
+            <div className="flex items-center gap-2">
               {state?.phase !== "song-guess" ? (
-                <PrimaryButton
+                <SecondaryButton
                   onClick={() => setAnswerMode(activeAnswerMode === "song" ? "word" : "song")}
                   disabled={!songGuessingActive}
-                  className="flex-1"
+                  className="shrink-0"
                 >
                   {activeAnswerMode === "song" ? "Guess Word" : "Guess Song"}
-                </PrimaryButton>
+                </SecondaryButton>
               ) : null}
-              <p className="flex-1 rounded-xl bg-surface-muted px-3 py-2 text-sm text-[#c4b5a0] ring-1 ring-ink/15">
-                {activeAnswerMode === "song"
-                  ? "Name the track."
-                  : answerLocked
-                    ? `Locked for ${wordCooldownRemainingSeconds}s.`
-                    : "Type any missing word."}
+              <p className="min-w-0 flex-1 text-sm font-medium text-[#c4b5a0]">
+                {submitError ??
+                  feedback ??
+                  (activeAnswerMode === "song"
+                    ? "Name the track."
+                    : answerLocked
+                      ? `Locked for ${wordCooldownRemainingSeconds}s.`
+                      : "Type any missing lyric word.")}
               </p>
+            </div>
+            {state?.announcement ? (
+              <p className="mt-3 border-t border-ink/15 pt-3 text-center text-xs font-semibold text-ink">
+                {state.announcement}
+              </p>
+            ) : null}
+          </Panel>
+        ) : (
+          <Panel className="mb-3">
+            <p className="text-center text-sm text-[#c4b5a0]">
+              {state?.phase === "lobby"
+                ? "Waiting for the host to start the game..."
+                : "Waiting for the next round..."}
+            </p>
+          </Panel>
+        )}
+
+        {state?.currentRound ? (
+          <Panel title="Missing lyric clues" className="mb-3">
+            <p className="mb-2 text-xs font-medium text-[#8a7d6b]">
+              Numbers show the length of each hidden word.
+            </p>
+            <div className="max-h-36 overflow-y-auto pr-1">
+              <LyricBoard lines={state.currentRound.lines} size="sm" />
             </div>
           </Panel>
         ) : null}
