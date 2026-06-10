@@ -27,6 +27,7 @@ const BEAT_DURATION_MS = 15_000;
 const ROOM_TTL_MS = 24 * 60 * 60 * 1000;
 const WORD_GUESS_COOLDOWN_MS = 10_000;
 const FREE_FOR_ALL_MS = 60_000;
+const PRE_REVEALED_WORDS = new Set(["a", "an", "i", "the"]);
 
 
 interface InternalRoom {
@@ -630,6 +631,11 @@ export class GameManager {
 
   private buildRoundState(round: RoundConfig): RoundState {
     const parsed = attachAnswers(parseLyricTemplate(round.template), round.answers);
+    const preRevealedBlankIndices = parsed.tokens
+      .filter((token) => token.type === "blank")
+      .map((token) => token.index)
+      .filter((index) => PRE_REVEALED_WORDS.has(normalizeWordGuess(parsed.answers[index] ?? "")));
+
     return {
       title: round.title,
       artist: round.artist,
@@ -637,7 +643,7 @@ export class GameManager {
       tokens: parsed.tokens,
       lines: parsed.lines,
       answers: parsed.answers,
-      revealedBlankIndices: [],
+      revealedBlankIndices: preRevealedBlankIndices,
       songGuesses: [],
       songSolvedAt: null,
       freeForAllEndsAt: null,
