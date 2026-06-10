@@ -27,7 +27,7 @@ const BEAT_DURATION_MS = 15_000;
 const ROOM_TTL_MS = 24 * 60 * 60 * 1000;
 const WORD_GUESS_COOLDOWN_MS = 10_000;
 const FREE_FOR_ALL_MS = 60_000;
-const PRE_REVEALED_WORDS = new Set(["a", "an", "i", "the"]);
+const PRE_REVEALED_WORDS = new Set(["a", "an", "i", "of", "the", "to"]);
 
 
 interface InternalRoom {

@@ -515,8 +515,8 @@ function BlankTile({
         style={style}
         className={
           size === "tv"
-            ? `inline-flex items-center justify-center rounded-xl bg-[#16a34a] font-black uppercase tracking-wide text-white shadow-[0_0_20px_rgba(22,163,74,0.5)] ring-[3px] ring-white ${className}`
-            : `inline-flex items-center justify-center rounded-md bg-success/15 font-semibold uppercase tracking-wide text-success ring-2 ring-success/35 ${className}`
+            ? `inline-flex items-center justify-center rounded-xl bg-[#201a12] font-black uppercase tracking-wide text-[#fde047] shadow-[0_0_16px_rgba(253,224,71,0.22)] ring-0 ${className}`
+            : `inline-flex items-center justify-center rounded-md bg-surface-muted font-semibold uppercase tracking-wide text-success ring-0 ${className}`
         }
       >
         {token.answer}
