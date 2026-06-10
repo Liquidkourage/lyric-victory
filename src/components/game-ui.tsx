@@ -510,14 +510,14 @@ function BlankTile({
   const className = getBlankClasses(size);
 
   if (token.revealed && token.answer) {
+    if (size === "tv") {
+      return <TvBreakMark value={token.answer} label="Revealed word" />;
+    }
+
     return (
       <span
         style={style}
-        className={
-          size === "tv"
-            ? `inline-flex items-center justify-center rounded-xl bg-[#201a12] font-black uppercase tracking-wide text-[#fde047] shadow-[0_0_16px_rgba(253,224,71,0.22)] ring-0 ${className}`
-            : `inline-flex items-center justify-center rounded-md bg-surface-muted font-semibold uppercase tracking-wide text-success ring-0 ${className}`
-        }
+        className={`inline-flex items-center justify-center rounded-md bg-surface-muted font-semibold uppercase tracking-wide text-success ring-0 ${className}`}
       >
         {token.answer}
       </span>
