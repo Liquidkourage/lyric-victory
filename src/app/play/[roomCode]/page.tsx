@@ -3,7 +3,6 @@
 import { Suspense, useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import {
-  LyricBoard,
   MusicBackdrop,
   Panel,
   PhaseBadge,
@@ -178,7 +177,7 @@ function PlayRoomContent() {
 
   return (
     <MusicBackdrop>
-      <main className="mx-auto flex min-h-full max-w-lg flex-col px-4 py-4 sm:max-w-xl">
+      <main className="mx-auto flex min-h-full max-w-lg flex-col justify-center px-4 py-4 sm:max-w-xl">
         <header className="mb-3 flex items-center justify-between gap-3">
           <div>
             <p className="text-base font-black text-[#f4ede3]">{displayName}</p>
@@ -217,7 +216,10 @@ function PlayRoomContent() {
         ) : null}
 
         {wordGuessingActive || songGuessingActive ? (
-          <Panel title={activeAnswerMode === "song" ? "Guess the song" : "Guess a missing word"} className="mb-3">
+          <Panel
+            title={activeAnswerMode === "song" ? "Guess the song" : "Guess a missing word"}
+            className="mb-3"
+          >
             <div className="mb-3 flex gap-2">
               <input
                 value={answerValue}
@@ -229,7 +231,7 @@ function PlayRoomContent() {
                   }
                 }}
                 placeholder={answerPlaceholder}
-                className="input-dark min-h-16 min-w-0 flex-1 rounded-2xl px-4 py-4 text-lg font-black"
+                className="input-dark min-h-20 min-w-0 flex-1 rounded-2xl px-5 py-5 text-xl font-black"
               />
               <PrimaryButton onClick={submitAnswer} disabled={answerDisabled} className="min-w-24">
                 {answerSubmitLabel}
@@ -272,14 +274,9 @@ function PlayRoomContent() {
         )}
 
         {state?.currentRound ? (
-          <Panel title="Missing lyric clues" className="mb-3">
-            <p className="mb-2 text-xs font-medium text-[#8a7d6b]">
-              Numbers show the length of each hidden word.
-            </p>
-            <div className="max-h-36 overflow-y-auto pr-1">
-              <LyricBoard lines={state.currentRound.lines} size="sm" />
-            </div>
-          </Panel>
+          <p className="text-center text-xs font-medium text-[#8a7d6b]">
+            Follow the lyric board on the public display.
+          </p>
         ) : null}
       </main>
     </MusicBackdrop>
