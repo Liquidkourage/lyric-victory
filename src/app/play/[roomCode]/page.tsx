@@ -29,6 +29,7 @@ function PlayRoomContent() {
   const [joinError, setJoinError] = useState<string | null>(null);
   const [wordGuess, setWordGuess] = useState("");
   const [songGuess, setSongGuess] = useState("");
+  const [answerMode, setAnswerMode] = useState<"word" | "song">("word");
   const [feedback, setFeedback] = useState<string | null>(null);
   const [wordCooldownUntil, setWordCooldownUntil] = useState<number | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -93,6 +94,21 @@ function PlayRoomContent() {
   const wordSubmitDisabled = !wordGuess.trim() || wordCooldownRemainingMs > 0;
   const songGuessingActive =
     state?.phase === "word-guess" || state?.phase === "between-rounds" || state?.phase === "song-guess";
+  const activeAnswerMode = state?.phase === "song-guess" ? "song" : answerMode;
+  const answerValue = activeAnswerMode === "song" ? songGuess : wordGuess;
+  const answerLocked = activeAnswerMode === "word" && wordCooldownRemainingMs > 0;
+  const answerActive = activeAnswerMode === "song" ? songGuessingActive : wordGuessingActive;
+  const answerPlaceholder = activeAnswerMode === "song" ? "Song title" : "Your word guess";
+  const answerSubmitLabel =
+    activeAnswerMode === "song"
+      ? "Submit Song"
+      : wordCooldownRemainingMs > 0
+        ? `${wordCooldownRemainingSeconds}s`
+        : "Send";
+  const answerDisabled =
+    !answerActive ||
+    !answerValue.trim() ||
+    (activeAnswerMode === "word" && wordSubmitDisabled);
 
   const submitWordGuess = async () => {
     const result = await guessWord(wordGuess);
@@ -124,6 +140,15 @@ function PlayRoomContent() {
       );
       if (result.accepted) setSongGuess("");
     }
+  };
+
+  const submitAnswer = () => {
+    if (activeAnswerMode === "song") {
+      void submitSongGuess();
+      return;
+    }
+
+    void submitWordGuess();
   };
 
   if (!playerId) {
@@ -162,78 +187,96 @@ function PlayRoomContent() {
           <RoomCodeBadge code={roomCode} />
         </header>
 
-        <div className="mb-4 flex items-center justify-between">
-          {state ? <PhaseBadge phase={state.phase} /> : null}
-          <span className={`text-sm ${connected ? "text-success" : "text-red-400"}`}>
-            {connected ? "Connected" : "Reconnecting…"}
-          </span>
+        <div className="mb-3 grid grid-cols-3 gap-2">
+          <div className="rounded-2xl bg-surface/90 px-3 py-2 text-center ring-1 ring-ink/20">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-[#8a7d6b]">Score</p>
+            <p className="text-lg font-black text-ink">{currentPlayer?.score ?? 0}</p>
+          </div>
+          <div className="rounded-2xl bg-surface/90 px-3 py-2 text-center ring-1 ring-ink/20">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-[#8a7d6b]">Lockout</p>
+            <p className={`text-lg font-black ${answerLocked ? "text-red-300" : "text-success"}`}>
+              {answerLocked ? `${wordCooldownRemainingSeconds}s` : "Ready"}
+            </p>
+          </div>
+          <div className="rounded-2xl bg-surface/90 px-3 py-2 text-center ring-1 ring-ink/20">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-[#8a7d6b]">Status</p>
+            <p className={`truncate text-sm font-bold ${connected ? "text-success" : "text-red-400"}`}>
+              {connected ? "Live" : "Offline"}
+            </p>
+          </div>
         </div>
 
+        <div className="mb-3 flex items-center justify-between">
+          {state ? <PhaseBadge phase={state.phase} /> : null}
+          <RoomCodeBadge code={roomCode} compact />
+        </div>
 
-        <Panel className="mb-4">
-          <p className="text-center text-sm font-semibold text-ink">
-            Score: {currentPlayer?.score ?? 0}
+        {feedback || submitError ? (
+          <p className="mb-3 rounded-xl bg-surface-muted px-4 py-3 text-sm font-medium text-ink ring-1 ring-ink/20">
+            {submitError ?? feedback}
           </p>
-        </Panel>
+        ) : null}
+
         {state?.announcement ? (
-          <Panel className="mb-4">
+          <Panel className="mb-3">
             <p className="text-center text-sm font-medium text-ink">{state.announcement}</p>
           </Panel>
         ) : null}
 
         {state?.currentRound ? (
-          <Panel title="Puzzle" className="mb-4">
-            <LyricBoard lines={state.currentRound.lines} size="sm" />
+          <Panel title="Lyrics" className="mb-3">
+            <div className="max-h-28 overflow-hidden">
+              <LyricBoard lines={state.currentRound.lines} size="sm" />
+            </div>
           </Panel>
         ) : (
-          <Panel className="mb-4">
+          <Panel className="mb-3">
             <p className="text-center text-sm text-[#c4b5a0]">
               {state?.phase === "lobby"
-                ? "Waiting for the host to start the game…"
-                : "Waiting for the next round…"}
+                ? "Waiting for the host to start the game..."
+                : "Waiting for the next round..."}
             </p>
           </Panel>
         )}
 
-        {wordGuessingActive ? (
-          <Panel title="Guess a Word" className="mb-4">
-            <p className="my-3 text-sm text-[#c4b5a0]">
-              Submit whole words as they come to you. Correct matches reveal on the TV board.
-            </p>
-            <div className="flex gap-2">
+        {wordGuessingActive || songGuessingActive ? (
+          <Panel title={activeAnswerMode === "song" ? "Guess the Song" : "Answer"} className="mb-4">
+            <div className="mb-3 flex gap-2">
               <input
-                value={wordGuess}
-                onChange={(event) => setWordGuess(event.target.value)}
-                placeholder="Your word guess"
-                className="input-dark flex-1 rounded-2xl px-4 py-3 text-sm"
+                value={answerValue}
+                onChange={(event) => {
+                  if (activeAnswerMode === "song") {
+                    setSongGuess(event.target.value);
+                  } else {
+                    setWordGuess(event.target.value);
+                  }
+                }}
+                placeholder={answerPlaceholder}
+                className="input-dark min-h-14 flex-1 rounded-2xl px-4 py-4 text-base font-semibold"
               />
-              <PrimaryButton onClick={submitWordGuess} disabled={wordSubmitDisabled}>
-                {wordCooldownRemainingMs > 0 ? `${wordCooldownRemainingSeconds}s` : "Send"}
+              <PrimaryButton onClick={submitAnswer} disabled={answerDisabled} className="min-w-24">
+                {answerSubmitLabel}
               </PrimaryButton>
             </div>
-          </Panel>
-        ) : null}
-
-        {songGuessingActive ? (
-          <Panel title="Name That Song" className="mb-4">
             <div className="flex gap-2">
-              <input
-                value={songGuess}
-                onChange={(event) => setSongGuess(event.target.value)}
-                placeholder="Song title"
-                className="input-dark flex-1 rounded-2xl px-4 py-3 text-sm"
-              />
-              <PrimaryButton onClick={submitSongGuess} disabled={!songGuess.trim()}>
-                Send
-              </PrimaryButton>
+              {state?.phase !== "song-guess" ? (
+                <PrimaryButton
+                  onClick={() => setAnswerMode(activeAnswerMode === "song" ? "word" : "song")}
+                  disabled={!songGuessingActive}
+                  className="flex-1"
+                >
+                  {activeAnswerMode === "song" ? "Guess Word" : "Guess Song"}
+                </PrimaryButton>
+              ) : null}
+              <p className="flex-1 rounded-xl bg-surface-muted px-3 py-2 text-sm text-[#c4b5a0] ring-1 ring-ink/15">
+                {activeAnswerMode === "song"
+                  ? "Name the track."
+                  : answerLocked
+                    ? `Locked for ${wordCooldownRemainingSeconds}s.`
+                    : "Type any missing word."}
+              </p>
             </div>
           </Panel>
-        ) : null}
-
-        {feedback || submitError ? (
-          <p className="rounded-xl bg-surface-muted px-4 py-3 text-sm text-ink ring-1 ring-ink/20">
-            {submitError ?? feedback}
-          </p>
         ) : null}
       </main>
     </MusicBackdrop>
