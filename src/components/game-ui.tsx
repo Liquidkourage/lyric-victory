@@ -511,7 +511,7 @@ function BlankTile({
 
   if (token.revealed && token.answer) {
     if (size === "tv") {
-      return <TvBreakMark value={token.answer} label="Revealed word" />;
+      return <TvBreakMark value={token.answer.toUpperCase()} label="Revealed word" />;
     }
 
     return (
