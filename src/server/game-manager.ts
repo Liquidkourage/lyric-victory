@@ -670,6 +670,7 @@ export class GameManager {
 
     for (const round of room.rounds) {
       const autoIndices = this.getAutoRevealedBlankIndices(round.template, round.answers, autoRevealWords);
+      round.autoRevealedBlankIndices = autoIndices;
       round.revealedBlankIndices = [...new Set([...round.revealedBlankIndices, ...autoIndices])];
     }
   }
@@ -689,6 +690,7 @@ export class GameManager {
       lines: parsed.lines,
       answers: parsed.answers,
       revealedBlankIndices: preRevealedBlankIndices,
+      autoRevealedBlankIndices: preRevealedBlankIndices,
       songGuesses: [],
       songSolvedAt: null,
       freeForAllEndsAt: null,
@@ -790,6 +792,7 @@ export class GameManager {
             length: token.length,
             revealed,
             answer: revealed ? round.answers[token.index] : undefined,
+            autoRevealed: round.autoRevealedBlankIndices.includes(token.index),
           };
         }),
       })),

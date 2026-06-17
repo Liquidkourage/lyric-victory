@@ -19,6 +19,7 @@ export function buildPreviewLines(round: Pick<RoundConfig, "template" | "answers
         length: token.length,
         revealed,
         answer: revealed ? answer : undefined,
+        autoRevealed: revealed,
       };
     }),
   }));

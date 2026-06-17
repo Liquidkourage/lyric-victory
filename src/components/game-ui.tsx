@@ -26,7 +26,9 @@ const TV = {
   rowGapRem: 1.1,
   edgePaddingRem: 1.15,
   minScale: 0.52,
+  absMinScale: 0.22,
   maxScale: 1.2,
+  verticalFitRatio: 0.96,
 };
 
 function getSingleTileWidthRem(): number {
@@ -106,7 +108,8 @@ function normalizeRowSegments(segments: DisplayRowSegment[]): DisplayRowSegment[
 function getMaxLinesPerRowCandidates(lineCount: number): number[] {
   if (lineCount <= 4) return [1];
   if (lineCount <= 8) return [2, 1];
-  return [8, 7, 6, 5, 4, 3, 2].filter((count) => count <= lineCount);
+  if (lineCount <= 16) return [4, 3, 2, 1];
+  return [8, 7, 6, 5, 4, 3, 2, 1];
 }
 
 /** Pack lyric lines into display rows, never exceeding maxLinesPerRow lyric lines per row. */
@@ -277,6 +280,18 @@ function TvRevealedWord({ value }: { value: string }) {
   );
 }
 
+function TvAutoRevealedWord({ value }: { value: string }) {
+  return (
+    <span
+      className="inline-flex shrink-0 items-center self-center whitespace-pre font-semibold text-white/70"
+      style={{ fontSize: `calc(1.875rem * var(--tv-scale, 1))` }}
+      aria-label="Pre-revealed word"
+    >
+      {value}
+    </span>
+  );
+}
+
 function TvPunctuationUnit({ children }: { children: React.ReactNode }) {
   return (
     <span
@@ -353,6 +368,17 @@ function collectTvRowItems(row: DisplayRow): React.ReactNode[] {
   return items;
 }
 
+function rowsFitWidth(content: HTMLDivElement, availableWidth: number): boolean {
+  const rowElements = content.querySelectorAll<HTMLElement>("[data-tv-row-inner]");
+  let fits = true;
+
+  rowElements.forEach((row) => {
+    if (row.scrollWidth > availableWidth + 1) fits = false;
+  });
+
+  return fits;
+}
+
 function measureScaleForRows(
   content: HTMLDivElement,
   rows: DisplayRow[],
@@ -360,34 +386,21 @@ function measureScaleForRows(
   containerHeight: number,
 ): { scale: number; fits: boolean } {
   const rootRem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-  let lo = TV.minScale;
+
+  const fitsAtScale = (scale: number) => {
+    content.style.setProperty("--tv-scale", String(scale));
+    const availableWidth = containerWidth - TV.edgePaddingRem * scale * rootRem * 2;
+    if (!rowsFitWidth(content, availableWidth)) return false;
+    return content.scrollHeight <= containerHeight * TV.verticalFitRatio;
+  };
+
+  let lo = TV.absMinScale;
   let hi = TV.maxScale;
-  let best = TV.minScale;
+  let best = TV.absMinScale;
 
-  const rowBandHeightAtScale = (scale: number) => {
-    const rowGapTotalPx = Math.max(0, rows.length - 1) * TV.rowGapRem * scale * rootRem;
-    return (containerHeight - rowGapTotalPx) / Math.max(rows.length, 1);
-  };
-
-  const availableWidthAtScale = (scale: number) => {
-    return containerWidth - TV.edgePaddingRem * scale * rootRem * 2;
-  };
-
-  for (let attempt = 0; attempt < 18; attempt += 1) {
+  for (let attempt = 0; attempt < 22; attempt += 1) {
     const mid = (lo + hi) / 2;
-    content.style.setProperty("--tv-scale", String(mid));
-
-    const tileHeightPx = TV.tileHeightRem * mid * rootRem;
-    const rowBandHeight = rowBandHeightAtScale(mid);
-    const availableWidth = availableWidthAtScale(mid);
-    const rowElements = content.querySelectorAll<HTMLElement>("[data-tv-row-inner]");
-    let fits = tileHeightPx <= rowBandHeight * 0.88;
-
-    rowElements.forEach((row) => {
-      if (row.scrollWidth > availableWidth) fits = false;
-    });
-
-    if (fits) {
+    if (fitsAtScale(mid)) {
       best = mid;
       lo = mid;
     } else {
@@ -396,17 +409,7 @@ function measureScaleForRows(
   }
 
   content.style.setProperty("--tv-scale", String(best));
-
-  const tileHeightPx = TV.tileHeightRem * best * rootRem;
-  const rowBandHeight = rowBandHeightAtScale(best);
-  const availableWidth = availableWidthAtScale(best);
-  const rowElements = content.querySelectorAll<HTMLElement>("[data-tv-row-inner]");
-  let fits = tileHeightPx <= rowBandHeight * 0.88;
-  rowElements.forEach((row) => {
-    if (row.scrollWidth > availableWidth) fits = false;
-  });
-
-  return { scale: best, fits };
+  return { scale: best, fits: fitsAtScale(best) };
 }
 
 function TvLyricRow({ row }: { row: DisplayRow }) {
@@ -416,7 +419,7 @@ function TvLyricRow({ row }: { row: DisplayRow }) {
   return (
     <div
       data-tv-row
-      className="flex min-h-0 w-full flex-1 items-center justify-center overflow-visible py-[calc(0.15rem*var(--tv-scale,1))]"
+      className="flex w-full shrink-0 items-center justify-center py-[calc(0.1rem*var(--tv-scale,1))]"
     >
       <div
         data-tv-row-inner
@@ -527,6 +530,9 @@ function BlankTile({
 
   if (token.revealed && token.answer) {
     if (size === "tv") {
+      if (token.autoRevealed) {
+        return <TvAutoRevealedWord value={token.answer} />;
+      }
       return <TvRevealedWord value={token.answer} />;
     }
 
@@ -626,9 +632,10 @@ export function ScaledLyricBoard({ lines }: { lines: PublicLine[] }) {
 
       let bestLayout = {
         rows: packLinesBalanced(lines, 4),
-        scale: TV.minScale,
+        scale: TV.absMinScale,
         fits: false,
         rowCount: Number.POSITIVE_INFINITY,
+        overflow: Number.POSITIVE_INFINITY,
       };
 
       for (const maxLinesPerRow of getMaxLinesPerRowCandidates(lines.length)) {
@@ -644,19 +651,23 @@ export function ScaledLyricBoard({ lines }: { lines: PublicLine[] }) {
           containerWidth,
           containerHeight,
         );
+        const overflow = Math.max(0, content.scrollHeight - containerHeight * TV.verticalFitRatio);
 
         if (fits) {
           if (
             rows.length < bestLayout.rowCount ||
             (rows.length === bestLayout.rowCount && scale > bestLayout.scale)
           ) {
-            bestLayout = { rows, scale, fits: true, rowCount: rows.length };
+            bestLayout = { rows, scale, fits: true, rowCount: rows.length, overflow: 0 };
           }
           continue;
         }
 
-        if (!bestLayout.fits && scale > bestLayout.scale) {
-          bestLayout = { rows, scale, fits: false, rowCount: rows.length };
+        if (
+          !bestLayout.fits &&
+          (overflow < bestLayout.overflow || (overflow === bestLayout.overflow && scale < bestLayout.scale))
+        ) {
+          bestLayout = { rows, scale, fits: false, rowCount: rows.length, overflow };
         }
       }
 
@@ -682,7 +693,7 @@ export function ScaledLyricBoard({ lines }: { lines: PublicLine[] }) {
     <div ref={containerRef} className="min-h-0 w-full flex-1 overflow-hidden">
       <div
         ref={contentRef}
-        className="flex h-full w-full flex-col items-center overflow-visible"
+        className="flex h-full w-full flex-col items-center justify-center overflow-hidden"
         style={
           {
             "--tv-scale": layout.scale,

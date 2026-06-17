@@ -48,6 +48,7 @@ export interface RoundState {
   lines: LyricToken[][];
   answers: string[];
   revealedBlankIndices: number[];
+  autoRevealedBlankIndices: number[];
   songGuesses: SongGuessEntry[];
   songSolvedAt: number | null;
   freeForAllEndsAt: number | null;
@@ -100,7 +101,7 @@ export interface PublicLine {
 
 export type PublicToken =
   | { type: "text"; value: string }
-  | { type: "blank"; index: number; length: number; revealed: boolean; answer?: string };
+  | { type: "blank"; index: number; length: number; revealed: boolean; answer?: string; autoRevealed?: boolean };
 
 export interface HostGameState extends PublicGameState {
   roundDraft: RoundConfig | null;
