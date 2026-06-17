@@ -1,0 +1,15 @@
+---
+description: Commit and push after making code changes
+alwaysApply: true
+---
+
+# Auto commit and push
+
+After completing code changes in this repo, always commit and push to `origin` unless the user explicitly says not to.
+
+- Run `git status` and `git diff` before committing
+- Write a concise commit message focused on why
+- Push to `origin/main` (or the current branch) after a successful commit
+- Skip commit/push if there are no changes, or if the user asked for review-only / question-only work with no edits
+
+Follow the git safety protocol in user rules (no force push, no amend unless allowed, no committing secrets).
