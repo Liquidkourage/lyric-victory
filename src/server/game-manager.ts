@@ -8,6 +8,7 @@ import {
   parseLyricTemplate,
   titlesMatch,
 } from "../lib/lyrics";
+import { INCREDIBLY_COMMON_WORDS } from "../lib/common-words";
 import { generateRoomCode, normalizeRoomCode } from "../lib/room-code";
 import { getWordGuessPointValues } from "../lib/lyric-scoring";
 import type {
@@ -27,9 +28,6 @@ const BEAT_DURATION_MS = 15_000;
 const ROOM_TTL_MS = 24 * 60 * 60 * 1000;
 const WORD_GUESS_COOLDOWN_MS = 10_000;
 const FREE_FOR_ALL_MS = 60_000;
-const PRE_REVEALED_WORDS = new Set(["a", "an", "i", "of", "the", "to"]);
-
-
 interface InternalRoom {
   code: string;
   hostSocketId: string | null;
@@ -518,7 +516,10 @@ export class GameManager {
 
     player.score += totalPoints;
     room.recentWordGuesses = room.recentWordGuesses.slice(0, 12);
-    room.announcement = `${player.displayName} found ${word.toUpperCase()} for ${totalPoints} points!`;
+    room.announcement =
+      totalPoints > 0
+        ? `${player.displayName} found ${word.toUpperCase()} for ${totalPoints} points!`
+        : `${player.displayName} found ${word.toUpperCase()}.`;
     return { accepted: true, points: totalPoints, count: matchingBlankIndexes.length };
   }
 
@@ -634,7 +635,7 @@ export class GameManager {
     const preRevealedBlankIndices = parsed.tokens
       .filter((token) => token.type === "blank")
       .map((token) => token.index)
-      .filter((index) => PRE_REVEALED_WORDS.has(normalizeWordGuess(parsed.answers[index] ?? "")));
+      .filter((index) => INCREDIBLY_COMMON_WORDS.has(normalizeWordGuess(parsed.answers[index] ?? "")));
 
     return {
       title: round.title,

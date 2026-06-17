@@ -1,4 +1,5 @@
-﻿import { normalizeWordGuess } from "./lyrics";
+﻿import { isIncrediblyCommonWord } from "./common-words";
+import { normalizeWordGuess } from "./lyrics";
 import { LYRIC_STEM_RANKS } from "./lyric-stem-ranks";
 
 export const MIN_WORD_POINTS = 10;
@@ -6,7 +7,9 @@ export const MAX_WORD_POINTS = 100;
 export const WORD_RARITY_SCALE = 18;
 export const REPEATED_WORD_DECAY = 0.8;
 
-type LyricScoreSource = "override" | "corpus" | "fallback";
+type LyricScoreSource = "common" | "override" | "corpus" | "fallback";
+
+export const INCREDIBLY_COMMON_WORD_POINTS = 0;
 
 export type LyricWordScoreBreakdown = {
   word: string;
@@ -183,6 +186,23 @@ export function getLyricWordScoreBreakdown(
       totalPoints: MIN_WORD_POINTS,
       totalAppearances,
       source: "fallback",
+      stemCandidates,
+    };
+  }
+
+  if (isIncrediblyCommonWord(word)) {
+    const pointValues = Array.from({ length: Math.max(1, totalAppearances) }, () => INCREDIBLY_COMMON_WORD_POINTS);
+
+    return {
+      word,
+      matchedStem: word,
+      rank: 1,
+      basePoints: INCREDIBLY_COMMON_WORD_POINTS,
+      pointsPerBlank: INCREDIBLY_COMMON_WORD_POINTS,
+      pointValues,
+      totalPoints: 0,
+      totalAppearances,
+      source: "common",
       stemCandidates,
     };
   }

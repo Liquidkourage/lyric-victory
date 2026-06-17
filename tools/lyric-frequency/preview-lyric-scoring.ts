@@ -1,9 +1,18 @@
 ﻿import { getLyricWordScoreBreakdown } from "../../src/lib/lyric-scoring";
 
 const sampleWords = [
+  "a",
+  "an",
   "the",
   "i",
   "you",
+  "from",
+  "into",
+  "and",
+  "but",
+  "is",
+  "was",
+  "not",
   "love",
   "baby",
   "babies",
