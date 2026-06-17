@@ -157,7 +157,20 @@ export function useHostGame(code: string, hostToken: string | null) {
 
     const client = getSocket();
 
-    const onConnect = () => setConnected(true);
+    const onConnect = () => {
+      setConnected(true);
+      client.emit(
+        "host:rejoin",
+        { code, hostToken },
+        (response: { ok: boolean; error?: string }) => {
+          if (!response?.ok) {
+            setError(response?.error ?? "Unable to rejoin as host.");
+          } else {
+            setError(null);
+          }
+        },
+      );
+    };
     const onDisconnect = () => setConnected(false);
     const onPublicState = (nextState: PublicGameState) => {
       setState((prev) => (prev ? { ...prev, ...nextState } : null));
@@ -172,18 +185,8 @@ export function useHostGame(code: string, hostToken: string | null) {
     if (!client.connected) {
       client.connect();
     } else {
-      setConnected(true);
+      onConnect();
     }
-
-    client.emit(
-      "host:rejoin",
-      { code, hostToken },
-      (response: { ok: boolean; error?: string }) => {
-        if (!response?.ok) {
-          setError(response?.error ?? "Unable to rejoin as host.");
-        }
-      },
-    );
 
     return () => {
       client.off("connect", onConnect);

@@ -170,7 +170,7 @@ export class GameManager {
     });
 
     socket.on("host:add-round", ({ code, hostToken, round }, callback) => {
-      const room = this.requireHost(code, hostToken, socket.id);
+      const room = this.requireHost(code, hostToken, socket);
       if (!room) {
         callback({ ok: false, error: "Unauthorized or room not found." });
         return;
@@ -200,7 +200,7 @@ export class GameManager {
     });
 
     socket.on("host:remove-round", ({ code, hostToken, index }, callback) => {
-      const room = this.requireHost(code, hostToken, socket.id);
+      const room = this.requireHost(code, hostToken, socket);
       if (!room) {
         callback({ ok: false, error: "Unauthorized or room not found." });
         return;
@@ -212,7 +212,7 @@ export class GameManager {
     });
 
     socket.on("host:set-announcement", ({ code, hostToken, message }, callback) => {
-      const room = this.requireHost(code, hostToken, socket.id);
+      const room = this.requireHost(code, hostToken, socket);
       if (!room) {
         callback({ ok: false, error: "Unauthorized or room not found." });
         return;
@@ -224,7 +224,7 @@ export class GameManager {
     });
 
     socket.on("host:set-auto-reveal-words", ({ code, hostToken, words }, callback) => {
-      const room = this.requireHost(code, hostToken, socket.id);
+      const room = this.requireHost(code, hostToken, socket);
       if (!room) {
         callback({ ok: false, error: "Unauthorized or room not found." });
         return;
@@ -251,7 +251,7 @@ export class GameManager {
     });
 
     socket.on("host:start-auto-reveal-preview", ({ code, hostToken, roundIndex, resetWords = true }, callback) => {
-      const room = this.requireHost(code, hostToken, socket.id);
+      const room = this.requireHost(code, hostToken, socket);
       if (!room) {
         callback({ ok: false, error: "Unauthorized or room not found." });
         return;
@@ -282,7 +282,7 @@ export class GameManager {
     });
 
     socket.on("host:stop-auto-reveal-preview", ({ code, hostToken }, callback) => {
-      const room = this.requireHost(code, hostToken, socket.id);
+      const room = this.requireHost(code, hostToken, socket);
       if (!room) {
         callback({ ok: false, error: "Unauthorized or room not found." });
         return;
@@ -298,7 +298,7 @@ export class GameManager {
     });
 
     socket.on("host:clear-auto-reveal-words", ({ code, hostToken }, callback) => {
-      const room = this.requireHost(code, hostToken, socket.id);
+      const room = this.requireHost(code, hostToken, socket);
       if (!room) {
         callback({ ok: false, error: "Unauthorized or room not found." });
         return;
@@ -311,7 +311,7 @@ export class GameManager {
     });
 
     socket.on("host:start-game", ({ code, hostToken }, callback) => {
-      const room = this.requireHost(code, hostToken, socket.id);
+      const room = this.requireHost(code, hostToken, socket);
       if (!room) {
         callback({ ok: false, error: "Unauthorized or room not found." });
         return;
@@ -336,7 +336,7 @@ export class GameManager {
     });
 
     socket.on("host:start-word-phase", ({ code, hostToken }, callback) => {
-      const room = this.requireHost(code, hostToken, socket.id);
+      const room = this.requireHost(code, hostToken, socket);
       if (!room || room.currentRoundIndex < 0) {
         callback({ ok: false, error: "No active round." });
         return;
@@ -352,7 +352,7 @@ export class GameManager {
     });
 
     socket.on("host:start-song-phase", ({ code, hostToken }, callback) => {
-      const room = this.requireHost(code, hostToken, socket.id);
+      const room = this.requireHost(code, hostToken, socket);
       if (!room || room.currentRoundIndex < 0) {
         callback({ ok: false, error: "No active round." });
         return;
@@ -366,7 +366,7 @@ export class GameManager {
     });
 
     socket.on("host:next-round", ({ code, hostToken }, callback) => {
-      const room = this.requireHost(code, hostToken, socket.id);
+      const room = this.requireHost(code, hostToken, socket);
       if (!room) {
         callback({ ok: false, error: "Unauthorized or room not found." });
         return;
@@ -389,7 +389,7 @@ export class GameManager {
     });
 
     socket.on("host:end-game", ({ code, hostToken }, callback) => {
-      const room = this.requireHost(code, hostToken, socket.id);
+      const room = this.requireHost(code, hostToken, socket);
       if (!room) {
         callback({ ok: false, error: "Unauthorized or room not found." });
         return;
@@ -508,9 +508,6 @@ export class GameManager {
 
     socket.on("disconnect", () => {
       for (const room of this.rooms.values()) {
-        if (room.hostSocketId === socket.id) {
-          room.hostSocketId = null;
-        }
         const playerId = room.socketToPlayer.get(socket.id);
         if (playerId) {
           const player = room.players.get(playerId);
@@ -713,11 +710,13 @@ export class GameManager {
     return this.rooms.get(code);
   }
 
-  private requireHost(codeInput: string, hostToken: string, socketId: string) {
+  private requireHost(codeInput: string, hostToken: string, socket: Socket) {
     const room = this.getRoom(codeInput);
-    if (!room || room.hostToken !== hostToken || room.hostSocketId !== socketId) {
+    if (!room || room.hostToken !== hostToken) {
       return undefined;
     }
+    room.hostSocketId = socket.id;
+    socket.join(room.code);
     return room;
   }
 
