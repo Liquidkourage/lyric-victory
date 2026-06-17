@@ -16,14 +16,14 @@ The TV display is a **read-only fullscreen kiosk**. It never hosts controls, for
 4. **No truncation** — Prefer wrap, scale down the board, or paginate. Never clip text the audience needs.
 5. **Display ≠ host** — Do not reuse host badges, compact typography, or `MusicBackdrop`. Use `display-stage` / TV variants only.
 
-## Lyric board (maximum readability)
+## Lyric board (all lyrics on screen)
 
-- **Paginate** long songs — never shrink below ~58px tile height; show 4–12 lines per page
-- **One lyric line per row**, left-aligned (verse rhythm, not centered blobs)
+- **Every line visible at once** — no pagination; scale to fit the full song
+- **One lyric line per row**, left-aligned
 - **Hidden blanks**: high-contrast cream chip + bold black letter count
-- **Pre-revealed**: inline white text at chip cap-height (no box)
+- **Pre-revealed**: inline white text (saves horizontal space)
 - **Player-revealed**: gold chip + pop animation
-- Auto-jump to the page where a word was just revealed
+- Tighten row gaps automatically on long songs
 
 - Body base: `clamp(20px, 1.35vw, 26px)` on `.display-stage`
 - Round title: `text-5xl+`, phase: `text-2xl+`
@@ -35,5 +35,5 @@ The TV display is a **read-only fullscreen kiosk**. It never hosts controls, for
 ## Layout
 
 - Fixed `inset-0`, `overflow-hidden`, no page scroll
-- Board scales per page; paginate instead of shrinking tiles below the legibility floor
+- Board shows the **full song**; scale to fit height and width
 - Sidebar ~380px; three panels: Puzzle, Leaderboard, Live Feed

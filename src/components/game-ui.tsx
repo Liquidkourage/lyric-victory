@@ -4,13 +4,9 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { getBlankProgress } from "@/lib/round-progress";
 import {
-  chunkLyricLines,
-  findNewlyRevealedLineIndex,
-  getPageIndexForLine,
-  getRevealSignature,
+  getRowGapRemForLineCount,
   getVisibleLyricLines,
   sanitizeLineTokensForTv,
-  TV_PAGE_SIZE_CANDIDATES,
 } from "@/lib/tv-board-layout";
 import type { PublicLine, PublicToken } from "@/lib/types";
 
@@ -26,18 +22,18 @@ export interface DisplayRow {
 }
 
 const TV = {
-  tileHeightRem: 6.5,
-  charWidthRem: 1.2,
-  tilePaddingRem: 1.35,
-  markWidthRem: 2.2,
-  markGapRem: 0.6,
+  tileHeightRem: 6,
+  charWidthRem: 1.1,
+  tilePaddingRem: 1.15,
+  markWidthRem: 2,
+  markGapRem: 0.5,
   segmentGapRem: 0.85,
-  rowGapRem: 1.35,
-  edgePaddingRem: 1,
-  minTileHeightPx: 58,
+  rowGapRem: 1.2,
+  edgePaddingRem: 0.75,
+  absMinScale: 0.14,
   maxScale: 1.25,
-  verticalFitRatio: 0.92,
-  tileGapRatio: 0.38,
+  verticalFitRatio: 0.97,
+  tileGapRatio: 0.32,
 };
 
 function getSingleTileWidthRem(): number {
@@ -116,10 +112,6 @@ function linesToDisplayRows(lines: PublicLine[]): DisplayRow[] {
   return getVisibleLyricLines(lines).map((line) => ({
     segments: [{ type: "line" as const, tokens: line.tokens }],
   }));
-}
-
-function getMinScaleFromTileFloor(rootRem: number): number {
-  return TV.minTileHeightPx / (TV.tileHeightRem * rootRem);
 }
 
 /** Pack lyric lines into display rows, never exceeding maxLinesPerRow lyric lines per row. */
@@ -398,10 +390,11 @@ function measureScaleForRows(
   rowCount: number,
   containerWidth: number,
   containerHeight: number,
+  rowGapRem: number,
 ): { scale: number; fits: boolean } {
   const rootRem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
 
-  const scaleFloor = getMinScaleFromTileFloor(rootRem);
+  const scaleFloor = TV.absMinScale;
   let lo = scaleFloor;
   let hi = TV.maxScale;
   let best = scaleFloor;
@@ -409,12 +402,11 @@ function measureScaleForRows(
   const fitsAtScale = (scale: number) => {
     content.style.setProperty("--tv-scale", String(scale));
 
-    const rowGapTotalPx = Math.max(0, rowCount - 1) * TV.rowGapRem * scale * rootRem;
+    const rowGapTotalPx = Math.max(0, rowCount - 1) * rowGapRem * scale * rootRem;
     const rowBandHeight = (containerHeight - rowGapTotalPx) / Math.max(rowCount, 1);
     const tileHeightPx = TV.tileHeightRem * scale * rootRem;
     const availableWidth = containerWidth - TV.edgePaddingRem * scale * rootRem * 2;
 
-    if (tileHeightPx < TV.minTileHeightPx) return false;
     if (tileHeightPx > rowBandHeight * TV.verticalFitRatio) return false;
     return rowsFitWidth(content, availableWidth);
   };
@@ -572,7 +564,7 @@ function BlankTile({
       style={style}
       className={
         size === "tv"
-          ? `inline-flex items-center justify-center rounded-lg border-[3px] border-[#1a1612] bg-[#f5f0e6] font-black tabular-nums text-[#0a0907] ${className}`
+          ? `inline-flex items-center justify-center rounded-md border-2 border-[#1a1612] bg-[#f5f0e6] font-black tabular-nums text-[#0a0907] ${className}`
           : `inline-flex items-center justify-center rounded-md bg-surface-muted font-bold tabular-nums text-ink-bright ring-2 ring-ink/30 ${className}`
       }
       aria-label={`${token.length} letter blank`}
@@ -636,102 +628,44 @@ export function LyricBoard({
 export function ScaledLyricBoard({ lines }: { lines: PublicLine[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
-  const previousLinesRef = useRef<PublicLine[]>(lines);
-  const revealSignatureRef = useRef(getRevealSignature(lines));
-
-  const [pageIndex, setPageIndex] = useState(0);
-  const [boardLayout, setBoardLayout] = useState<{
-    pages: PublicLine[][];
-    pageSize: number;
-    scale: number;
-  }>(() => ({
-    pages: [getVisibleLyricLines(lines)],
-    pageSize: Math.max(1, lines.length),
+  const [layout, setLayout] = useState<{ rows: DisplayRow[]; scale: number; rowGapRem: number }>(() => ({
+    rows: linesToDisplayRows(lines),
     scale: 1,
+    rowGapRem: TV.rowGapRem,
   }));
-  const [measurementRows, setMeasurementRows] = useState<DisplayRow[] | null>(null);
-
-  const activePageIndex = Math.min(pageIndex, Math.max(0, boardLayout.pages.length - 1));
-  const activeRows = linesToDisplayRows(boardLayout.pages[activePageIndex] ?? []);
-  const rowsToRender = measurementRows ?? activeRows;
 
   useLayoutEffect(() => {
     const container = containerRef.current;
     const content = contentRef.current;
     if (!container || !content) return;
 
-    const visibleLines = getVisibleLyricLines(lines);
-    if (visibleLines.length === 0) {
-      setBoardLayout({ pages: [], pageSize: 1, scale: 1 });
-      setMeasurementRows(null);
+    const rows = linesToDisplayRows(lines);
+    if (rows.length === 0) {
+      setLayout({ rows: [], scale: 1, rowGapRem: TV.rowGapRem });
       return;
     }
+
+    const rowGapRem = getRowGapRemForLineCount(rows.length, TV.rowGapRem);
 
     const runLayout = () => {
       const containerWidth = container.clientWidth;
       const containerHeight = container.clientHeight;
       if (containerWidth <= 0 || containerHeight <= 0) return;
 
-      const rootRem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-      const scaleFloor = getMinScaleFromTileFloor(rootRem);
-      const candidates = TV_PAGE_SIZE_CANDIDATES.filter((size) => size <= visibleLines.length);
+      flushSync(() => {
+        setLayout({ rows, scale: 1, rowGapRem });
+      });
 
-      let best = {
-        pages: chunkLyricLines(visibleLines, 4),
-        pageSize: 4,
-        scale: scaleFloor,
-        fits: false,
-      };
-
-      for (const pageSize of candidates) {
-        const pages = chunkLyricLines(visibleLines, pageSize);
-        let worstScale = TV.maxScale;
-        let allPagesFit = true;
-
-        for (const page of pages) {
-          const rows = linesToDisplayRows(page);
-          flushSync(() => {
-            setMeasurementRows(rows);
-          });
-
-          const { scale, fits } = measureScaleForRows(
-            content,
-            rows.length,
-            containerWidth,
-            containerHeight,
-          );
-
-          worstScale = Math.min(worstScale, scale);
-          if (!fits || scale < scaleFloor - 0.01) {
-            allPagesFit = false;
-          }
-        }
-
-        if (!allPagesFit) continue;
-
-        if (worstScale > best.scale || (worstScale === best.scale && pageSize > best.pageSize)) {
-          best = { pages, pageSize, scale: worstScale, fits: true };
-        }
-      }
-
-      if (!best.fits) {
-        const pageSize = 4;
-        const pages = chunkLyricLines(visibleLines, pageSize);
-        const rows = linesToDisplayRows(pages[0] ?? []);
-        flushSync(() => {
-          setMeasurementRows(rows);
-        });
-        const { scale } = measureScaleForRows(content, rows.length, containerWidth, containerHeight);
-        best = { pages, pageSize, scale, fits: false };
-      }
+      const { scale } = measureScaleForRows(
+        content,
+        rows.length,
+        containerWidth,
+        containerHeight,
+        rowGapRem,
+      );
 
       flushSync(() => {
-        setMeasurementRows(null);
-        setBoardLayout({
-          pages: best.pages,
-          pageSize: best.pageSize,
-          scale: best.scale,
-        });
+        setLayout({ rows, scale, rowGapRem });
       });
     };
 
@@ -742,59 +676,27 @@ export function ScaledLyricBoard({ lines }: { lines: PublicLine[] }) {
     return () => observer.disconnect();
   }, [lines]);
 
-  useEffect(() => {
-    const previousLines = previousLinesRef.current;
-    const nextSignature = getRevealSignature(lines);
-    const previousSignature = revealSignatureRef.current;
-
-    if (nextSignature !== previousSignature) {
-      const revealedLineIndex = findNewlyRevealedLineIndex(previousLines, lines);
-      if (revealedLineIndex !== null && boardLayout.pageSize > 0) {
-        setPageIndex(getPageIndexForLine(revealedLineIndex, boardLayout.pageSize));
-      }
-    }
-
-    previousLinesRef.current = lines;
-    revealSignatureRef.current = nextSignature;
-  }, [lines, boardLayout.pageSize]);
-
-  useEffect(() => {
-    if (activePageIndex !== pageIndex) {
-      setPageIndex(activePageIndex);
-    }
-  }, [activePageIndex, pageIndex]);
-
-  const rowGap = `calc(${TV.rowGapRem}rem * var(--tv-scale, 1))`;
+  const rowGap = `calc(${layout.rowGapRem}rem * var(--tv-scale, 1))`;
   const edgePadding = getTvEdgePadding();
-  const totalLines = getVisibleLyricLines(lines).length;
-  const pageCount = boardLayout.pages.length;
-  const lineStart = activePageIndex * boardLayout.pageSize + 1;
-  const lineEnd = Math.min(totalLines, (activePageIndex + 1) * boardLayout.pageSize);
 
   return (
-    <div ref={containerRef} className="flex min-h-0 w-full flex-1 flex-col overflow-hidden">
+    <div ref={containerRef} className="min-h-0 w-full flex-1 overflow-hidden">
       <div
         ref={contentRef}
-        className="flex min-h-0 w-full flex-1 flex-col overflow-hidden"
+        className="flex h-full w-full flex-col overflow-hidden"
         style={
           {
-            "--tv-scale": boardLayout.scale,
+            "--tv-scale": layout.scale,
             gap: rowGap,
             paddingLeft: edgePadding,
             paddingRight: edgePadding,
           } as React.CSSProperties
         }
       >
-        {rowsToRender.map((row, rowIndex) => (
+        {layout.rows.map((row, rowIndex) => (
           <TvLyricRow key={rowIndex} row={row} />
         ))}
       </div>
-
-      {pageCount > 1 ? (
-        <p className="shrink-0 pt-2 text-center text-xl font-bold tracking-wide text-white/55">
-          Lines {lineStart}–{lineEnd} · Page {activePageIndex + 1} of {pageCount}
-        </p>
-      ) : null}
     </div>
   );
 }

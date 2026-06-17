@@ -70,19 +70,28 @@ export default function DisplayPage() {
   const showWordRushTimer = state?.phase === "between-rounds" && state.phaseEndsAt !== null;
   const acceptedSongGuess = state?.currentRound?.songGuesses.find((guess) => guess.accepted);
   const latestWordGuess = recentWordGuesses[0];
+  const boardActive = Boolean(state?.currentRound);
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden text-[#f4ede3]">
-      <main className="relative flex h-full min-h-0 flex-col px-5 py-4">
-        <header className="mb-3 flex shrink-0 items-start justify-between gap-6 border-b border-white/10 pb-3">
+      <main className="relative flex h-full min-h-0 flex-col px-5 py-3">
+        <header
+          className={`flex shrink-0 items-start justify-between gap-6 border-b border-white/10 ${
+            boardActive ? "mb-2 pb-2" : "mb-3 pb-3"
+          }`}
+        >
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1">
-              <h1 className="font-display text-6xl font-black leading-none text-white">
+              <h1
+                className={`font-display font-black leading-none text-white ${
+                  boardActive ? "text-4xl" : "text-6xl"
+                }`}
+              >
                 {state && state.currentRoundIndex >= 0
                   ? `Round ${state.currentRoundIndex + 1}`
                   : "Waiting for host"}
               </h1>
-              <p className="text-3xl font-bold text-[#fde047]">{phaseLabel}</p>
+              {!boardActive ? <p className="text-3xl font-bold text-[#fde047]">{phaseLabel}</p> : null}
             </div>
             {acceptedSongGuess ? (
               <p className="mt-2 text-4xl font-black leading-tight text-white">
@@ -101,10 +110,14 @@ export default function DisplayPage() {
           </div>
         ) : null}
 
-        <section className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_360px] gap-4">
-          <div className="tv-board-panel flex min-h-0 flex-col overflow-hidden rounded-2xl p-4">
+        <section className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_340px] gap-3">
+          <div className={`tv-board-panel flex min-h-0 flex-col overflow-hidden rounded-2xl ${boardActive ? "p-2" : "p-4"}`}>
             {state?.announcement ? (
-              <div className="display-announcement mb-3 shrink-0 rounded-xl px-6 py-4 text-center text-4xl font-black leading-tight tracking-wide text-[#1a1612]">
+              <div
+                className={`display-announcement shrink-0 rounded-xl px-4 text-center font-black leading-tight tracking-wide text-[#1a1612] ${
+                  boardActive ? "mb-2 py-2 text-2xl" : "mb-3 px-6 py-4 text-4xl"
+                }`}
+              >
                 {state.announcement}
               </div>
             ) : null}
