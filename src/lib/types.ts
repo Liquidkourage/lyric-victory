@@ -116,6 +116,7 @@ export interface HostGameState extends PublicGameState {
   pendingRounds: RoundConfig[];
   answerKey: string[];
   autoRevealWords: string[] | null;
+  autoRevealTuningActive: boolean;
 }
 
 export interface SongSearchResult {

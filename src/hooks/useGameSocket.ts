@@ -221,6 +221,13 @@ export function useHostGame(code: string, hostToken: string | null) {
     endGame: () => emitHost<{ ok: boolean; error?: string }>("host:end-game", {}),
     setAutoRevealWords: (words: string[]) =>
       emitHost<{ ok: boolean; error?: string }>("host:set-auto-reveal-words", { words }),
+    startAutoRevealPreview: (roundIndex: number, resetWords = true) =>
+      emitHost<{ ok: boolean; error?: string }>("host:start-auto-reveal-preview", {
+        roundIndex,
+        resetWords,
+      }),
+    stopAutoRevealPreview: () =>
+      emitHost<{ ok: boolean; error?: string }>("host:stop-auto-reveal-preview", {}),
     clearAutoRevealWords: () =>
       emitHost<{ ok: boolean; error?: string }>("host:clear-auto-reveal-words", {}),
   };

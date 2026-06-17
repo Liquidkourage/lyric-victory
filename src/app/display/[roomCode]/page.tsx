@@ -38,7 +38,9 @@ export default function DisplayPage() {
   const recentWordGuesses = groupWordGuessEntries(state?.recentWordGuesses ?? []).slice(0, 5);
 
   const phaseLabel =
-    state?.phase === "song-guess"
+    state?.announcement?.startsWith("Auto-reveal tuning")
+      ? "Auto-reveal tuning"
+      : state?.phase === "song-guess"
       ? "Final title chance"
       : state?.phase === "between-rounds"
         ? "Open word rush"

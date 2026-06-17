@@ -46,6 +46,9 @@ interface InternalRoom {
   pendingWordGuesses: Map<string, { playerId: string; word: string }>;
   wordCooldowns: Map<string, number>;
   autoRevealWords: Set<string> | null;
+  autoRevealTuningActive: boolean;
+  tuningPreviewRoundIndex: number;
+  tuningPreviewRound: RoundState | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -79,6 +82,9 @@ export class GameManager {
         pendingWordGuesses: new Map(),
         wordCooldowns: new Map(),
         autoRevealWords: null,
+        autoRevealTuningActive: false,
+        tuningPreviewRoundIndex: -1,
+        tuningPreviewRound: null,
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };
@@ -243,7 +249,58 @@ export class GameManager {
         .filter(Boolean);
 
       room.autoRevealWords = new Set(normalized);
-      this.applyAutoRevealWords(room);
+      if (room.autoRevealTuningActive) {
+        this.rebuildTuningPreviewRound(room);
+      } else {
+        this.applyAutoRevealWords(room);
+      }
+      room.updatedAt = Date.now();
+      callback({ ok: true });
+      this.broadcast(code);
+    });
+
+    socket.on("host:start-auto-reveal-preview", ({ code, hostToken, roundIndex, resetWords = true }, callback) => {
+      const room = this.requireHost(code, hostToken, socket.id);
+      if (!room) {
+        callback({ ok: false, error: "Unauthorized or room not found." });
+        return;
+      }
+      if (room.phase !== "lobby") {
+        callback({ ok: false, error: "Tuning preview is only available before the game starts." });
+        return;
+      }
+
+      const index = Number(roundIndex);
+      if (!Number.isInteger(index) || index < 0 || !room.pendingRounds[index]) {
+        callback({ ok: false, error: "Choose a queued song to preview." });
+        return;
+      }
+
+      room.autoRevealTuningActive = true;
+      room.tuningPreviewRoundIndex = index;
+      if (resetWords) {
+        room.autoRevealWords = new Set();
+      } else if (room.autoRevealWords === null) {
+        room.autoRevealWords = new Set();
+      }
+      this.rebuildTuningPreviewRound(room);
+      room.announcement = "Auto-reveal tuning — all words hidden";
+      room.updatedAt = Date.now();
+      callback({ ok: true });
+      this.broadcast(code);
+    });
+
+    socket.on("host:stop-auto-reveal-preview", ({ code, hostToken }, callback) => {
+      const room = this.requireHost(code, hostToken, socket.id);
+      if (!room) {
+        callback({ ok: false, error: "Unauthorized or room not found." });
+        return;
+      }
+
+      room.autoRevealTuningActive = false;
+      room.tuningPreviewRoundIndex = -1;
+      room.tuningPreviewRound = null;
+      room.announcement = "Waiting for players to join…";
       room.updatedAt = Date.now();
       callback({ ok: true });
       this.broadcast(code);
@@ -272,6 +329,9 @@ export class GameManager {
         callback({ ok: false, error: "Add at least one song round first." });
         return;
       }
+      room.autoRevealTuningActive = false;
+      room.tuningPreviewRoundIndex = -1;
+      room.tuningPreviewRound = null;
       room.rounds = room.pendingRounds.map((round) => this.buildRoundState(round, this.getAutoRevealWords(room)));
       room.players.forEach((player) => {
         player.score = 0;
@@ -668,6 +728,44 @@ export class GameManager {
     }
   }
 
+  private rebuildTuningPreviewRound(room: InternalRoom) {
+    const config = room.pendingRounds[room.tuningPreviewRoundIndex];
+    if (!config) {
+      room.tuningPreviewRound = null;
+      return;
+    }
+
+    room.tuningPreviewRound = this.buildRoundState(config, this.getAutoRevealWords(room));
+  }
+
+  private getDisplayRound(room: InternalRoom) {
+    if (room.autoRevealTuningActive && room.tuningPreviewRound) {
+      return room.tuningPreviewRound;
+    }
+
+    if (room.currentRoundIndex >= 0) {
+      return room.rounds[room.currentRoundIndex] ?? null;
+    }
+
+    return null;
+  }
+
+  private getDisplayRoundIndex(room: InternalRoom) {
+    if (room.autoRevealTuningActive) {
+      return room.tuningPreviewRoundIndex;
+    }
+
+    return room.currentRoundIndex;
+  }
+
+  private getDisplayTotalRounds(room: InternalRoom) {
+    if (room.autoRevealTuningActive) {
+      return room.pendingRounds.length;
+    }
+
+    return room.rounds.length;
+  }
+
   private getAutoRevealWords(room: InternalRoom) {
     return room.autoRevealWords ?? INCREDIBLY_COMMON_WORDS;
   }
@@ -744,8 +842,14 @@ export class GameManager {
   }
 
   private toPublicState(room: InternalRoom): PublicGameState {
-    const currentRound =
-      room.currentRoundIndex >= 0 ? this.toPublicRound(room.rounds[room.currentRoundIndex]) : null;
+    const roundState = this.getDisplayRound(room);
+    const currentRound = roundState
+      ? {
+          ...this.toPublicRound(roundState),
+          title: roundState.title,
+          artist: roundState.artist,
+        }
+      : null;
 
     return {
       code: room.code,
@@ -753,8 +857,8 @@ export class GameManager {
       players: Array.from(room.players.values()),
       announcement: room.announcement,
       currentRound,
-      currentRoundIndex: room.currentRoundIndex,
-      totalRounds: room.rounds.length,
+      currentRoundIndex: this.getDisplayRoundIndex(room),
+      totalRounds: this.getDisplayTotalRounds(room),
       beat: { ...room.beat },
       phaseEndsAt: this.getPhaseEndsAt(room),
       recentWordGuesses: room.recentWordGuesses,
@@ -763,24 +867,24 @@ export class GameManager {
   }
 
   private toHostState(room: InternalRoom): HostGameState {
-    const currentRound =
-      room.currentRoundIndex >= 0 ? room.rounds[room.currentRoundIndex] : null;
+    const roundState = this.getDisplayRound(room);
     const publicState = this.toPublicState(room);
 
     return {
       ...publicState,
-      currentRound: currentRound
+      currentRound: roundState
         ? {
-            ...this.toPublicRound(currentRound),
-            title: currentRound.title,
-            artist: currentRound.artist,
+            ...this.toPublicRound(roundState),
+            title: roundState.title,
+            artist: roundState.artist,
           }
         : null,
       roundHistory: room.rounds.map(({ title, artist }) => ({ title, artist })),
       roundDraft: null,
       pendingRounds: room.pendingRounds,
-      answerKey: currentRound?.answers ?? [],
-      autoRevealWords: room.autoRevealWords ? [...room.autoRevealWords] : null,
+      answerKey: roundState?.answers ?? [],
+      autoRevealWords: room.autoRevealWords !== null ? [...room.autoRevealWords] : null,
+      autoRevealTuningActive: room.autoRevealTuningActive,
     };
   }
 

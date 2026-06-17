@@ -34,7 +34,8 @@ export default function HostRoomPage() {
     nextRound,
     endGame,
     setAutoRevealWords,
-    clearAutoRevealWords,
+    startAutoRevealPreview,
+    stopAutoRevealPreview,
   } = useHostGame(roomCode, hostToken);
 
   const [actionError, setActionError] = useState<string | null>(null);
@@ -234,8 +235,10 @@ export default function HostRoomPage() {
               <AutoRevealTuner
                 pendingRounds={state?.pendingRounds ?? []}
                 roomAutoRevealWords={state?.autoRevealWords ?? null}
+                tuningActive={state?.autoRevealTuningActive ?? false}
+                onStartPreview={startAutoRevealPreview}
+                onStopPreview={stopAutoRevealPreview}
                 onApply={setAutoRevealWords}
-                onClear={clearAutoRevealWords}
               />
             </CollapsiblePanel>
 
