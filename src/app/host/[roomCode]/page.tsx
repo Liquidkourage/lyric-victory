@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { AutoRevealTuner } from "@/components/auto-reveal-tuner";
 import {
   CollapsiblePanel,
   HostRoundSummary,
@@ -32,6 +33,8 @@ export default function HostRoomPage() {
     startWordPhase,
     nextRound,
     endGame,
+    setAutoRevealWords,
+    clearAutoRevealWords,
   } = useHostGame(roomCode, hostToken);
 
   const [actionError, setActionError] = useState<string | null>(null);
@@ -227,6 +230,15 @@ export default function HostRoomPage() {
           </div>
 
           <div className="space-y-6">
+            <CollapsiblePanel title="Auto-Reveal Tuner (temp)" defaultOpen={false}>
+              <AutoRevealTuner
+                pendingRounds={state?.pendingRounds ?? []}
+                roomAutoRevealWords={state?.autoRevealWords ?? null}
+                onApply={setAutoRevealWords}
+                onClear={clearAutoRevealWords}
+              />
+            </CollapsiblePanel>
+
             <CollapsiblePanel title="Live Controls" defaultOpen>
               <div className="grid gap-2">
                 {state?.phase === "round-setup" ? (

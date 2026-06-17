@@ -219,6 +219,10 @@ export function useHostGame(code: string, hostToken: string | null) {
     startSongPhase: () => emitHost<{ ok: boolean; error?: string }>("host:start-song-phase", {}),
     nextRound: () => emitHost<{ ok: boolean; error?: string }>("host:next-round", {}),
     endGame: () => emitHost<{ ok: boolean; error?: string }>("host:end-game", {}),
+    setAutoRevealWords: (words: string[]) =>
+      emitHost<{ ok: boolean; error?: string }>("host:set-auto-reveal-words", { words }),
+    clearAutoRevealWords: () =>
+      emitHost<{ ok: boolean; error?: string }>("host:clear-auto-reveal-words", {}),
   };
 }
 

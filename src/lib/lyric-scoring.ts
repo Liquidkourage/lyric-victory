@@ -1,4 +1,4 @@
-﻿import { isIncrediblyCommonWord } from "./common-words";
+﻿import { isIncrediblyCommonWord, INCREDIBLY_COMMON_WORDS } from "./common-words";
 import { normalizeWordGuess } from "./lyrics";
 import { LYRIC_STEM_RANKS } from "./lyric-stem-ranks";
 
@@ -171,6 +171,7 @@ function getProgressivePointValues(basePoints: number, totalAppearances: number)
 export function getLyricWordScoreBreakdown(
   rawWord: string,
   totalAppearances: number,
+  autoRevealWords: ReadonlySet<string> = INCREDIBLY_COMMON_WORDS,
 ): LyricWordScoreBreakdown {
   const word = normalizeWordGuess(rawWord);
   const stemCandidates = getLyricStemCandidates(word);
@@ -190,7 +191,7 @@ export function getLyricWordScoreBreakdown(
     };
   }
 
-  if (isIncrediblyCommonWord(word)) {
+  if (isIncrediblyCommonWord(word, autoRevealWords)) {
     const pointValues = Array.from({ length: Math.max(1, totalAppearances) }, () => INCREDIBLY_COMMON_WORD_POINTS);
 
     return {
@@ -243,14 +244,26 @@ export function getLyricWordScoreBreakdown(
   };
 }
 
-export function getWordGuessPointValues(word: string, totalAppearances: number) {
-  return getLyricWordScoreBreakdown(word, totalAppearances).pointValues;
+export function getWordGuessPointValues(
+  word: string,
+  totalAppearances: number,
+  autoRevealWords: ReadonlySet<string> = INCREDIBLY_COMMON_WORDS,
+) {
+  return getLyricWordScoreBreakdown(word, totalAppearances, autoRevealWords).pointValues;
 }
 
-export function getWordGuessTotalPoints(word: string, totalAppearances: number) {
-  return getLyricWordScoreBreakdown(word, totalAppearances).totalPoints;
+export function getWordGuessTotalPoints(
+  word: string,
+  totalAppearances: number,
+  autoRevealWords: ReadonlySet<string> = INCREDIBLY_COMMON_WORDS,
+) {
+  return getLyricWordScoreBreakdown(word, totalAppearances, autoRevealWords).totalPoints;
 }
 
-export function getWordGuessPoints(word: string, totalAppearances: number) {
-  return getLyricWordScoreBreakdown(word, totalAppearances).pointsPerBlank;
+export function getWordGuessPoints(
+  word: string,
+  totalAppearances: number,
+  autoRevealWords: ReadonlySet<string> = INCREDIBLY_COMMON_WORDS,
+) {
+  return getLyricWordScoreBreakdown(word, totalAppearances, autoRevealWords).pointsPerBlank;
 }

@@ -127,7 +127,7 @@ export const INCREDIBLY_COMMON_WORDS = new Set<string>([
   ...CONJUNCTIONS,
 ]);
 
-export function isIncrediblyCommonWord(rawWord: string) {
+export function isIncrediblyCommonWord(rawWord: string, autoRevealWords: ReadonlySet<string> = INCREDIBLY_COMMON_WORDS) {
   const word = normalizeWordGuess(rawWord);
-  return word !== "" && INCREDIBLY_COMMON_WORDS.has(word);
+  return word !== "" && autoRevealWords.has(word);
 }

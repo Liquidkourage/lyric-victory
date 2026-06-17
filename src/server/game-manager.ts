@@ -45,6 +45,7 @@ interface InternalRoom {
   roundTimer: NodeJS.Timeout | null;
   pendingWordGuesses: Map<string, { playerId: string; word: string }>;
   wordCooldowns: Map<string, number>;
+  autoRevealWords: Set<string> | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -77,6 +78,7 @@ export class GameManager {
         roundTimer: null,
         pendingWordGuesses: new Map(),
         wordCooldowns: new Map(),
+        autoRevealWords: null,
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };
@@ -224,6 +226,42 @@ export class GameManager {
       this.broadcast(code);
     });
 
+    socket.on("host:set-auto-reveal-words", ({ code, hostToken, words }, callback) => {
+      const room = this.requireHost(code, hostToken, socket.id);
+      if (!room) {
+        callback({ ok: false, error: "Unauthorized or room not found." });
+        return;
+      }
+
+      if (!Array.isArray(words)) {
+        callback({ ok: false, error: "Invalid auto-reveal word list." });
+        return;
+      }
+
+      const normalized = words
+        .map((word) => normalizeWordGuess(String(word)))
+        .filter(Boolean);
+
+      room.autoRevealWords = new Set(normalized);
+      this.applyAutoRevealWords(room);
+      room.updatedAt = Date.now();
+      callback({ ok: true });
+      this.broadcast(code);
+    });
+
+    socket.on("host:clear-auto-reveal-words", ({ code, hostToken }, callback) => {
+      const room = this.requireHost(code, hostToken, socket.id);
+      if (!room) {
+        callback({ ok: false, error: "Unauthorized or room not found." });
+        return;
+      }
+
+      room.autoRevealWords = null;
+      room.updatedAt = Date.now();
+      callback({ ok: true });
+      this.broadcast(code);
+    });
+
     socket.on("host:start-game", ({ code, hostToken }, callback) => {
       const room = this.requireHost(code, hostToken, socket.id);
       if (!room) {
@@ -234,7 +272,7 @@ export class GameManager {
         callback({ ok: false, error: "Add at least one song round first." });
         return;
       }
-      room.rounds = room.pendingRounds.map((round) => this.buildRoundState(round));
+      room.rounds = room.pendingRounds.map((round) => this.buildRoundState(round, this.getAutoRevealWords(room)));
       room.players.forEach((player) => {
         player.score = 0;
       });
@@ -494,7 +532,7 @@ export class GameManager {
       .filter((token) => token.type === "blank")
       .map((token) => token.index)
       .filter((index) => normalizeWordGuess(round.answers[index] ?? "") === word);
-    const pointValues = getWordGuessPointValues(word, allMatchingBlankIndexes.length);
+    const pointValues = getWordGuessPointValues(word, allMatchingBlankIndexes.length, this.getAutoRevealWords(room));
     let totalPoints = 0;
 
     matchingBlankIndexes.forEach((blankIndex) => {
@@ -630,12 +668,33 @@ export class GameManager {
     }
   }
 
-  private buildRoundState(round: RoundConfig): RoundState {
+  private getAutoRevealWords(room: InternalRoom) {
+    return room.autoRevealWords ?? INCREDIBLY_COMMON_WORDS;
+  }
+
+  private getAutoRevealedBlankIndices(template: string, answers: string[], autoRevealWords: Set<string>) {
+    const parsed = attachAnswers(parseLyricTemplate(template), answers);
+    return parsed.tokens
+      .filter((token) => token.type === "blank")
+      .map((token) => token.index)
+      .filter((index) => autoRevealWords.has(normalizeWordGuess(parsed.answers[index] ?? "")));
+  }
+
+  private applyAutoRevealWords(room: InternalRoom) {
+    const autoRevealWords = this.getAutoRevealWords(room);
+
+    for (const round of room.rounds) {
+      const autoIndices = this.getAutoRevealedBlankIndices(round.template, round.answers, autoRevealWords);
+      round.revealedBlankIndices = [...new Set([...round.revealedBlankIndices, ...autoIndices])];
+    }
+  }
+
+  private buildRoundState(round: RoundConfig, autoRevealWords: Set<string>): RoundState {
     const parsed = attachAnswers(parseLyricTemplate(round.template), round.answers);
     const preRevealedBlankIndices = parsed.tokens
       .filter((token) => token.type === "blank")
       .map((token) => token.index)
-      .filter((index) => INCREDIBLY_COMMON_WORDS.has(normalizeWordGuess(parsed.answers[index] ?? "")));
+      .filter((index) => autoRevealWords.has(normalizeWordGuess(parsed.answers[index] ?? "")));
 
     return {
       title: round.title,
@@ -721,6 +780,7 @@ export class GameManager {
       roundDraft: null,
       pendingRounds: room.pendingRounds,
       answerKey: currentRound?.answers ?? [],
+      autoRevealWords: room.autoRevealWords ? [...room.autoRevealWords] : null,
     };
   }
 
