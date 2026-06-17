@@ -283,10 +283,12 @@ function TvRevealedWord({ value }: { value: string }) {
 }
 
 function TvAutoRevealedWord({ value }: { value: string }) {
+  const style = getBlankStyle(value.length, "tv");
+
   return (
     <span
-      className="inline-flex shrink-0 items-center self-center whitespace-pre font-semibold text-white/70"
-      style={{ fontSize: `calc(1.875rem * var(--tv-scale, 1))` }}
+      style={style}
+      className="inline-flex shrink-0 items-center justify-center self-center rounded-xl bg-[#2a241c] px-[calc(0.75rem*var(--tv-scale,1))] font-black uppercase leading-none tracking-wide text-white ring-2 ring-white/40"
       aria-label="Pre-revealed word"
     >
       {value}
