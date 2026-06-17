@@ -114,8 +114,8 @@ export default function DisplayPage() {
           <div className={`tv-board-panel flex min-h-0 flex-col overflow-hidden rounded-2xl ${boardActive ? "p-2" : "p-4"}`}>
             {state?.announcement ? (
               <div
-                className={`display-announcement shrink-0 rounded-xl px-4 text-center font-black leading-tight tracking-wide text-[#1a1612] ${
-                  boardActive ? "mb-2 py-2 text-2xl" : "mb-3 px-6 py-4 text-4xl"
+                className={`display-announcement shrink-0 rounded-lg px-4 text-center font-bold leading-tight tracking-wide text-[#1a1612] ${
+                  boardActive ? "mb-1.5 py-1.5 text-xl" : "mb-3 px-6 py-4 text-4xl font-black"
                 }`}
               >
                 {state.announcement}

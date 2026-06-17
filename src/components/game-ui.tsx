@@ -32,11 +32,11 @@ const TV = {
   segmentGapRem: 0.85,
   rowGapRem: 1.2,
   columnGapRem: 0.35,
-  columnDividerRem: 1.4,
+  columnDividerRem: 2.2,
   edgePaddingRem: 0.75,
   absMinScale: 0.14,
   maxScale: 1.25,
-  verticalFitRatio: 0.97,
+  verticalFitRatio: 0.98,
   tileGapRatio: 0.32,
 };
 
@@ -261,7 +261,7 @@ function getTvMarkStyle(value: string): React.CSSProperties {
 function TvBreakMark({ value, label }: { value: string; label: string }) {
   return (
     <span
-      className="inline-flex shrink-0 items-center justify-center self-center px-0.5 font-black leading-none text-white drop-shadow-[0_0_16px_rgba(255,255,255,0.42)]"
+      className="inline-flex shrink-0 items-center justify-center self-center px-0.5 font-bold leading-none text-white/55"
       style={getTvMarkStyle(value)}
       aria-label={label}
     >
@@ -292,7 +292,7 @@ function TvRevealedWord({ value }: { value: string }) {
 function TvAutoRevealedWord({ value }: { value: string }) {
   return (
     <span
-      className="inline-flex shrink-0 items-center self-center whitespace-pre font-bold text-white"
+      className="tv-auto-revealed-word inline-flex shrink-0 items-center self-center whitespace-pre rounded-md px-[calc(0.35rem*var(--tv-scale,1))] font-semibold text-[#c4b5a0]"
       style={{
         fontSize: getTvBlankFontSize(),
         lineHeight: `calc(${TV.tileHeightRem}rem * var(--tv-scale, 1))`,
@@ -446,7 +446,7 @@ function TvLyricRow({ row }: { row: DisplayRow }) {
   return (
     <div
       data-tv-row
-      className="flex w-full shrink-0 items-center justify-start py-[calc(0.1rem*var(--tv-scale,1))]"
+      className="flex min-h-0 w-full flex-1 items-center justify-start"
     >
       <div
         data-tv-row-inner
@@ -465,7 +465,7 @@ function TvLyricColumn({ lines }: { lines: PublicLine[] }) {
   return (
     <div
       data-tv-column
-      className="flex min-w-0 flex-1 flex-col justify-start overflow-hidden"
+      className="flex h-full min-w-0 flex-1 flex-col overflow-hidden"
       style={{ gap: rowGap }}
     >
       {lines.map((line, lineIndex) => (
