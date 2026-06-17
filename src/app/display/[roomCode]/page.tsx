@@ -101,7 +101,7 @@ export default function DisplayPage() {
           </div>
         ) : null}
 
-        <section className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_400px] gap-4">
+        <section className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_360px] gap-4">
           <div className="tv-board-panel flex min-h-0 flex-col overflow-hidden rounded-2xl p-4">
             {state?.announcement ? (
               <div className="display-announcement mb-3 shrink-0 rounded-xl px-6 py-4 text-center text-4xl font-black leading-tight tracking-wide text-[#1a1612]">

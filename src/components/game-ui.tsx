@@ -3,6 +3,15 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { getBlankProgress } from "@/lib/round-progress";
+import {
+  chunkLyricLines,
+  findNewlyRevealedLineIndex,
+  getPageIndexForLine,
+  getRevealSignature,
+  getVisibleLyricLines,
+  sanitizeLineTokensForTv,
+  TV_PAGE_SIZE_CANDIDATES,
+} from "@/lib/tv-board-layout";
 import type { PublicLine, PublicToken } from "@/lib/types";
 
 const LINE_BREAK_MARKER = "/";
@@ -17,18 +26,18 @@ export interface DisplayRow {
 }
 
 const TV = {
-  tileHeightRem: 5.5,
-  charWidthRem: 1.15,
-  tilePaddingRem: 1.25,
-  markWidthRem: 2.05,
-  markGapRem: 0.55,
+  tileHeightRem: 6.5,
+  charWidthRem: 1.2,
+  tilePaddingRem: 1.35,
+  markWidthRem: 2.2,
+  markGapRem: 0.6,
   segmentGapRem: 0.85,
-  rowGapRem: 1.1,
-  edgePaddingRem: 1.15,
-  minScale: 0.45,
-  absMinScale: 0.28,
-  maxScale: 1.2,
-  verticalFitRatio: 0.9,
+  rowGapRem: 1.35,
+  edgePaddingRem: 1,
+  minTileHeightPx: 58,
+  maxScale: 1.25,
+  verticalFitRatio: 0.92,
+  tileGapRatio: 0.38,
 };
 
 function getSingleTileWidthRem(): number {
@@ -36,8 +45,12 @@ function getSingleTileWidthRem(): number {
 }
 
 function getTvTileGap(): string {
-  const gapRem = getSingleTileWidthRem() / 4;
+  const gapRem = getSingleTileWidthRem() * TV.tileGapRatio;
   return `calc(${gapRem}rem * var(--tv-scale, 1))`;
+}
+
+function getTvBlankFontSize(): string {
+  return `calc(${TV.tileHeightRem * 0.68}rem * var(--tv-scale, 1))`;
 }
 
 function getTvEdgePadding(): string {
@@ -66,17 +79,11 @@ function estimateTokenWidthRem(token: PublicToken): number {
 
 function estimateLineWidthRem(tokens: PublicToken[]): number {
   const visibleTokens = sanitizeLineTokensForTv(tokens);
-  const tokenGapRem = getSingleTileWidthRem() / 4;
+  const tokenGapRem = getSingleTileWidthRem() * TV.tileGapRatio;
 
   return visibleTokens.reduce((total, token, index) => {
     return total + estimateTokenWidthRem(token) + (index > 0 ? tokenGapRem : 0);
   }, 0);
-}
-
-function sanitizeLineTokensForTv(tokens: PublicToken[]): PublicToken[] {
-  return tokens.filter(
-    (token) => !(token.type === "text" && (token.value === LINE_BREAK_MARKER || token.value.trim() === "")),
-  );
 }
 
 function normalizeRowSegments(segments: DisplayRowSegment[]): DisplayRowSegment[] {
@@ -105,13 +112,14 @@ function normalizeRowSegments(segments: DisplayRowSegment[]): DisplayRowSegment[
   return filterTrailingSlash(normalized);
 }
 
-function getMaxLinesPerRowCandidates(lineCount: number): number[] {
-  if (lineCount <= 4) return [1];
-  if (lineCount <= 8) return [2, 1];
-  if (lineCount <= 16) return [2, 1, 3];
-  if (lineCount <= 28) return [2, 1, 3, 4];
-  // Long songs: packing many lines per row forces unreadable horizontal scale-down.
-  return [2, 1, 3, 4, 5];
+function linesToDisplayRows(lines: PublicLine[]): DisplayRow[] {
+  return getVisibleLyricLines(lines).map((line) => ({
+    segments: [{ type: "line" as const, tokens: line.tokens }],
+  }));
+}
+
+function getMinScaleFromTileFloor(rootRem: number): number {
+  return TV.minTileHeightPx / (TV.tileHeightRem * rootRem);
 }
 
 /** Pack lyric lines into display rows, never exceeding maxLinesPerRow lyric lines per row. */
@@ -274,7 +282,7 @@ function TvRevealedWord({ value }: { value: string }) {
     <span
       key={value}
       style={style}
-      className="tv-revealed-word inline-flex shrink-0 items-center justify-center self-center rounded-xl bg-[#fde047] px-[calc(0.75rem*var(--tv-scale,1))] font-black uppercase leading-none tracking-wide text-[#17120b] ring-[3px] ring-white/90"
+      className="tv-revealed-word inline-flex shrink-0 items-center justify-center self-center rounded-lg border-[3px] border-[#1a1612] bg-[#fde047] px-[calc(0.75rem*var(--tv-scale,1))] font-black uppercase leading-none tracking-wide text-[#0a0907]"
       aria-label="Revealed word"
     >
       {value.toUpperCase()}
@@ -283,12 +291,14 @@ function TvRevealedWord({ value }: { value: string }) {
 }
 
 function TvAutoRevealedWord({ value }: { value: string }) {
-  const style = getBlankStyle(value.length, "tv");
-
   return (
     <span
-      style={style}
-      className="inline-flex shrink-0 items-center justify-center self-center rounded-xl bg-[#2a241c] px-[calc(0.75rem*var(--tv-scale,1))] font-black uppercase leading-none tracking-wide text-white ring-2 ring-white/40"
+      className="inline-flex shrink-0 items-center self-center whitespace-pre font-bold text-white"
+      style={{
+        fontSize: getTvBlankFontSize(),
+        lineHeight: `calc(${TV.tileHeightRem}rem * var(--tv-scale, 1))`,
+        height: `calc(${TV.tileHeightRem}rem * var(--tv-scale, 1))`,
+      }}
       aria-label="Pre-revealed word"
     >
       {value}
@@ -391,6 +401,11 @@ function measureScaleForRows(
 ): { scale: number; fits: boolean } {
   const rootRem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
 
+  const scaleFloor = getMinScaleFromTileFloor(rootRem);
+  let lo = scaleFloor;
+  let hi = TV.maxScale;
+  let best = scaleFloor;
+
   const fitsAtScale = (scale: number) => {
     content.style.setProperty("--tv-scale", String(scale));
 
@@ -399,13 +414,10 @@ function measureScaleForRows(
     const tileHeightPx = TV.tileHeightRem * scale * rootRem;
     const availableWidth = containerWidth - TV.edgePaddingRem * scale * rootRem * 2;
 
+    if (tileHeightPx < TV.minTileHeightPx) return false;
     if (tileHeightPx > rowBandHeight * TV.verticalFitRatio) return false;
     return rowsFitWidth(content, availableWidth);
   };
-
-  let lo = TV.absMinScale;
-  let hi = TV.maxScale;
-  let best = TV.absMinScale;
 
   for (let attempt = 0; attempt < 22; attempt += 1) {
     const mid = (lo + hi) / 2;
@@ -428,11 +440,11 @@ function TvLyricRow({ row }: { row: DisplayRow }) {
   return (
     <div
       data-tv-row
-      className="flex min-h-0 w-full flex-1 items-center justify-center py-[calc(0.12rem*var(--tv-scale,1))]"
+      className="flex min-h-0 w-full flex-1 items-center justify-start py-[calc(0.14rem*var(--tv-scale,1))]"
     >
       <div
         data-tv-row-inner
-        className="flex max-w-full flex-nowrap items-center justify-center overflow-visible"
+        className="flex max-w-full flex-nowrap items-center justify-start overflow-visible"
         style={{ gap: tileGap }}
       >
         {items}
@@ -451,7 +463,7 @@ function getBlankStyle(length: number, size: "sm" | "md" | "lg" | "display" | "t
     return {
       height: `calc(${heightRem}rem * var(--tv-scale, 1))`,
       minWidth: `calc(${minWidthRem}rem * var(--tv-scale, 1))`,
-      fontSize: `calc(3.45rem * var(--tv-scale, 1))`,
+      fontSize: getTvBlankFontSize(),
     };
   }
 
@@ -560,7 +572,7 @@ function BlankTile({
       style={style}
       className={
         size === "tv"
-          ? `inline-flex items-center justify-center rounded-xl bg-[#d6a932] font-black tabular-nums text-[#17120b] shadow-[0_0_24px_rgba(214,169,50,0.38)] ring-[4px] ring-white ${className}`
+          ? `inline-flex items-center justify-center rounded-lg border-[3px] border-[#1a1612] bg-[#f5f0e6] font-black tabular-nums text-[#0a0907] ${className}`
           : `inline-flex items-center justify-center rounded-md bg-surface-muted font-bold tabular-nums text-ink-bright ring-2 ring-ink/30 ${className}`
       }
       aria-label={`${token.length} letter blank`}
@@ -624,93 +636,165 @@ export function LyricBoard({
 export function ScaledLyricBoard({ lines }: { lines: PublicLine[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
-  const [layout, setLayout] = useState<{ rows: DisplayRow[]; scale: number }>(() => ({
-    rows: packLinesBalanced(lines, 3),
+  const previousLinesRef = useRef<PublicLine[]>(lines);
+  const revealSignatureRef = useRef(getRevealSignature(lines));
+
+  const [pageIndex, setPageIndex] = useState(0);
+  const [boardLayout, setBoardLayout] = useState<{
+    pages: PublicLine[][];
+    pageSize: number;
+    scale: number;
+  }>(() => ({
+    pages: [getVisibleLyricLines(lines)],
+    pageSize: Math.max(1, lines.length),
     scale: 1,
   }));
+  const [measurementRows, setMeasurementRows] = useState<DisplayRow[] | null>(null);
+
+  const activePageIndex = Math.min(pageIndex, Math.max(0, boardLayout.pages.length - 1));
+  const activeRows = linesToDisplayRows(boardLayout.pages[activePageIndex] ?? []);
+  const rowsToRender = measurementRows ?? activeRows;
 
   useLayoutEffect(() => {
     const container = containerRef.current;
     const content = contentRef.current;
-    if (!container || !content || lines.length === 0) return;
+    if (!container || !content) return;
+
+    const visibleLines = getVisibleLyricLines(lines);
+    if (visibleLines.length === 0) {
+      setBoardLayout({ pages: [], pageSize: 1, scale: 1 });
+      setMeasurementRows(null);
+      return;
+    }
 
     const runLayout = () => {
       const containerWidth = container.clientWidth;
       const containerHeight = container.clientHeight;
       if (containerWidth <= 0 || containerHeight <= 0) return;
 
-      let bestLayout = {
-        rows: packLinesBalanced(lines, 2),
-        scale: TV.absMinScale,
+      const rootRem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+      const scaleFloor = getMinScaleFromTileFloor(rootRem);
+      const candidates = TV_PAGE_SIZE_CANDIDATES.filter((size) => size <= visibleLines.length);
+
+      let best = {
+        pages: chunkLyricLines(visibleLines, 4),
+        pageSize: 4,
+        scale: scaleFloor,
         fits: false,
       };
 
-      for (const maxLinesPerRow of getMaxLinesPerRowCandidates(lines.length)) {
-        const rows = packLinesBalanced(lines, maxLinesPerRow);
+      for (const pageSize of candidates) {
+        const pages = chunkLyricLines(visibleLines, pageSize);
+        let worstScale = TV.maxScale;
+        let allPagesFit = true;
 
-        flushSync(() => {
-          setLayout({ rows, scale: 1 });
-        });
+        for (const page of pages) {
+          const rows = linesToDisplayRows(page);
+          flushSync(() => {
+            setMeasurementRows(rows);
+          });
 
-        const { scale, fits } = measureScaleForRows(
-          content,
-          rows.length,
-          containerWidth,
-          containerHeight,
-        );
+          const { scale, fits } = measureScaleForRows(
+            content,
+            rows.length,
+            containerWidth,
+            containerHeight,
+          );
 
-        if (!fits) continue;
+          worstScale = Math.min(worstScale, scale);
+          if (!fits || scale < scaleFloor - 0.01) {
+            allPagesFit = false;
+          }
+        }
 
-        if (scale > bestLayout.scale || (scale === bestLayout.scale && rows.length < bestLayout.rows.length)) {
-          bestLayout = { rows, scale, fits: true };
+        if (!allPagesFit) continue;
+
+        if (worstScale > best.scale || (worstScale === best.scale && pageSize > best.pageSize)) {
+          best = { pages, pageSize, scale: worstScale, fits: true };
         }
       }
 
-      if (!bestLayout.fits) {
-        const rows = packLinesGreedy(lines, 1);
+      if (!best.fits) {
+        const pageSize = 4;
+        const pages = chunkLyricLines(visibleLines, pageSize);
+        const rows = linesToDisplayRows(pages[0] ?? []);
         flushSync(() => {
-          setLayout({ rows, scale: 1 });
+          setMeasurementRows(rows);
         });
         const { scale } = measureScaleForRows(content, rows.length, containerWidth, containerHeight);
-        bestLayout = { rows, scale, fits: false };
+        best = { pages, pageSize, scale, fits: false };
       }
 
       flushSync(() => {
-        setLayout({ rows: bestLayout.rows, scale: bestLayout.scale });
+        setMeasurementRows(null);
+        setBoardLayout({
+          pages: best.pages,
+          pageSize: best.pageSize,
+          scale: best.scale,
+        });
       });
     };
 
     runLayout();
 
-    const observer = new ResizeObserver(() => {
-      runLayout();
-    });
+    const observer = new ResizeObserver(runLayout);
     observer.observe(container);
-
     return () => observer.disconnect();
   }, [lines]);
 
+  useEffect(() => {
+    const previousLines = previousLinesRef.current;
+    const nextSignature = getRevealSignature(lines);
+    const previousSignature = revealSignatureRef.current;
+
+    if (nextSignature !== previousSignature) {
+      const revealedLineIndex = findNewlyRevealedLineIndex(previousLines, lines);
+      if (revealedLineIndex !== null && boardLayout.pageSize > 0) {
+        setPageIndex(getPageIndexForLine(revealedLineIndex, boardLayout.pageSize));
+      }
+    }
+
+    previousLinesRef.current = lines;
+    revealSignatureRef.current = nextSignature;
+  }, [lines, boardLayout.pageSize]);
+
+  useEffect(() => {
+    if (activePageIndex !== pageIndex) {
+      setPageIndex(activePageIndex);
+    }
+  }, [activePageIndex, pageIndex]);
+
   const rowGap = `calc(${TV.rowGapRem}rem * var(--tv-scale, 1))`;
   const edgePadding = getTvEdgePadding();
+  const totalLines = getVisibleLyricLines(lines).length;
+  const pageCount = boardLayout.pages.length;
+  const lineStart = activePageIndex * boardLayout.pageSize + 1;
+  const lineEnd = Math.min(totalLines, (activePageIndex + 1) * boardLayout.pageSize);
 
   return (
-    <div ref={containerRef} className="min-h-0 w-full flex-1 overflow-hidden">
+    <div ref={containerRef} className="flex min-h-0 w-full flex-1 flex-col overflow-hidden">
       <div
         ref={contentRef}
-        className="flex h-full w-full flex-col items-center overflow-hidden"
+        className="flex min-h-0 w-full flex-1 flex-col overflow-hidden"
         style={
           {
-            "--tv-scale": layout.scale,
+            "--tv-scale": boardLayout.scale,
             gap: rowGap,
             paddingLeft: edgePadding,
             paddingRight: edgePadding,
           } as React.CSSProperties
         }
       >
-        {layout.rows.map((row, rowIndex) => (
+        {rowsToRender.map((row, rowIndex) => (
           <TvLyricRow key={rowIndex} row={row} />
         ))}
       </div>
+
+      {pageCount > 1 ? (
+        <p className="shrink-0 pt-2 text-center text-xl font-bold tracking-wide text-white/55">
+          Lines {lineStart}–{lineEnd} · Page {activePageIndex + 1} of {pageCount}
+        </p>
+      ) : null}
     </div>
   );
 }

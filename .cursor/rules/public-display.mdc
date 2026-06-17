@@ -16,18 +16,14 @@ The TV display is a **read-only fullscreen kiosk**. It never hosts controls, for
 4. **No truncation** — Prefer wrap, scale down the board, or paginate. Never clip text the audience needs.
 5. **Display ≠ host** — Do not reuse host badges, compact typography, or `MusicBackdrop`. Use `display-stage` / TV variants only.
 
-## Tile hierarchy (lyric board)
+## Lyric board (maximum readability)
 
-| State | Treatment |
-|-------|-----------|
-| Hidden blank | Gold pill + letter count |
-| Pre-revealed | Dark pill, same size as blanks, white text |
-| Player-revealed | Bright gold pill + pop animation |
-| Punctuation | White glow, no box |
-
-All tile types share `--tv-scale` sizing; pre-revealed must never be smaller than blanks.
-
-## Typography floor (TV)
+- **Paginate** long songs — never shrink below ~58px tile height; show 4–12 lines per page
+- **One lyric line per row**, left-aligned (verse rhythm, not centered blobs)
+- **Hidden blanks**: high-contrast cream chip + bold black letter count
+- **Pre-revealed**: inline white text at chip cap-height (no box)
+- **Player-revealed**: gold chip + pop animation
+- Auto-jump to the page where a word was just revealed
 
 - Body base: `clamp(20px, 1.35vw, 26px)` on `.display-stage`
 - Round title: `text-5xl+`, phase: `text-2xl+`
@@ -39,5 +35,5 @@ All tile types share `--tv-scale` sizing; pre-revealed must never be smaller tha
 ## Layout
 
 - Fixed `inset-0`, `overflow-hidden`, no page scroll
-- Board scales to fit; long songs use ≤2 lyric lines per display row
+- Board scales per page; paginate instead of shrinking tiles below the legibility floor
 - Sidebar ~380px; three panels: Puzzle, Leaderboard, Live Feed
