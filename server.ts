@@ -30,6 +30,13 @@ app
       gameManager.registerHandlers(socket);
     });
 
+    const shutdown = () => {
+      gameManager.flushPersist();
+      process.exit(0);
+    };
+    process.on("SIGTERM", shutdown);
+    process.on("SIGINT", shutdown);
+
     httpServer.listen(port, host, () => {
       console.log(`Lyric Victory ready on http://${host}:${port}`);
     });

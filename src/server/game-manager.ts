@@ -23,6 +23,7 @@ import type {
   SongGuessEntry,
   WordGuessEntry,
 } from "../lib/types";
+import { loadRoomSnapshot, saveRoomSnapshot, type PersistedRoom } from "./room-store";
 
 const ROOM_TTL_MS = 24 * 60 * 60 * 1000;
 interface InternalRoom {
@@ -49,8 +50,14 @@ interface InternalRoom {
 
 export class GameManager {
   private rooms = new Map<string, InternalRoom>();
+  private persistTimer: NodeJS.Timeout | null = null;
 
   constructor(private io: Server) {
+    for (const room of loadRoomSnapshot().map((snapshot) => this.hydrateRoom(snapshot))) {
+      this.rooms.set(room.code, room);
+      this.restoreRoomTimers(room);
+    }
+
     setInterval(() => this.pruneRooms(), 60 * 60 * 1000);
   }
 
@@ -94,7 +101,8 @@ export class GameManager {
       room.hostSocketId = socket.id;
       socket.join(code);
       callback({ ok: true });
-      this.broadcast(code);
+      socket.emit("game:host-state", this.toHostState(room));
+      socket.emit("game:state", this.toPublicState(room));
     });
 
     socket.on("player:join", ({ code, displayName }, callback) => {
@@ -727,6 +735,7 @@ export class GameManager {
     if (room.hostSocketId) {
       this.io.to(room.hostSocketId).emit("game:host-state", this.toHostState(room));
     }
+    this.schedulePersist();
   }
 
   private toPublicState(room: InternalRoom): PublicGameState {
@@ -807,12 +816,108 @@ export class GameManager {
 
   private pruneRooms() {
     const cutoff = Date.now() - ROOM_TTL_MS;
+    let removed = false;
     for (const [code, room] of this.rooms.entries()) {
       if (room.updatedAt < cutoff) {
         this.clearRoundTimer(room);
         this.rooms.delete(code);
+        removed = true;
       }
     }
+    if (removed) {
+      this.schedulePersist();
+    }
+  }
+
+  private serializeRoom(room: InternalRoom): PersistedRoom {
+    return {
+      code: room.code,
+      hostToken: room.hostToken,
+      phase: room.phase,
+      players: Array.from(room.players.values()),
+      pendingRounds: room.pendingRounds,
+      rounds: room.rounds,
+      currentRoundIndex: room.currentRoundIndex,
+      announcement: room.announcement,
+      recentWordGuesses: room.recentWordGuesses,
+      wordCooldowns: [...room.wordCooldowns.entries()],
+      autoRevealWords: room.autoRevealWords !== null ? [...room.autoRevealWords] : null,
+      autoRevealTuningActive: room.autoRevealTuningActive,
+      tuningPreviewRoundIndex: room.tuningPreviewRoundIndex,
+      tuningPreviewRound: room.tuningPreviewRound,
+      createdAt: room.createdAt,
+      updatedAt: room.updatedAt,
+    };
+  }
+
+  private hydrateRoom(snapshot: PersistedRoom): InternalRoom {
+    return {
+      code: snapshot.code,
+      hostSocketId: null,
+      hostToken: snapshot.hostToken,
+      phase: snapshot.phase,
+      players: new Map(
+        snapshot.players.map((player) => [player.id, { ...player, connected: false }]),
+      ),
+      socketToPlayer: new Map(),
+      pendingRounds: snapshot.pendingRounds,
+      rounds: snapshot.rounds,
+      currentRoundIndex: snapshot.currentRoundIndex,
+      announcement: snapshot.announcement,
+      recentWordGuesses: snapshot.recentWordGuesses,
+      roundTimer: null,
+      wordCooldowns: new Map(snapshot.wordCooldowns),
+      autoRevealWords:
+        snapshot.autoRevealWords !== null ? new Set(snapshot.autoRevealWords) : null,
+      autoRevealTuningActive: snapshot.autoRevealTuningActive,
+      tuningPreviewRoundIndex: snapshot.tuningPreviewRoundIndex,
+      tuningPreviewRound: snapshot.tuningPreviewRound,
+      createdAt: snapshot.createdAt,
+      updatedAt: snapshot.updatedAt,
+    };
+  }
+
+  private restoreRoomTimers(room: InternalRoom) {
+    if (room.phase !== "between-rounds" || room.currentRoundIndex < 0) return;
+
+    const round = room.rounds[room.currentRoundIndex];
+    if (!round?.freeForAllEndsAt) return;
+
+    const remaining = round.freeForAllEndsAt - Date.now();
+    if (remaining <= 0) {
+      room.phase = "song-guess";
+      round.freeForAllEndsAt = null;
+      room.announcement = "Final title chance. Players who have not solved it get one guess.";
+      return;
+    }
+
+    this.clearRoundTimer(room);
+    room.roundTimer = setTimeout(() => {
+      room.phase = "song-guess";
+      round.freeForAllEndsAt = null;
+      room.announcement = "Final title chance. Players who have not solved it get one guess.";
+      room.updatedAt = Date.now();
+      this.broadcast(room.code);
+    }, remaining);
+  }
+
+  private schedulePersist() {
+    if (this.persistTimer) {
+      clearTimeout(this.persistTimer);
+    }
+
+    this.persistTimer = setTimeout(() => {
+      this.persistTimer = null;
+      this.flushPersist();
+    }, 400);
+  }
+
+  flushPersist() {
+    if (this.persistTimer) {
+      clearTimeout(this.persistTimer);
+      this.persistTimer = null;
+    }
+    saveRoomSnapshot([...this.rooms.values()].map((room) => this.serializeRoom(room)));
   }
 }
 

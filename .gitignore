@@ -40,5 +40,8 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# local room persistence (use ROOM_STORE_PATH on Railway volume for deploy survival)
+.data/
+
 data/lyric-frequency/raw/
 data/lyric-frequency/lyric-stem-stats.json

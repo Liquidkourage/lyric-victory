@@ -6,3 +6,8 @@ builder = "NIXPACKS"
 healthcheckPath = "/api/health"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
+
+# Mount a Railway volume at /data and set ROOM_STORE_PATH=/data/rooms.json
+# so rooms survive deploys. Hard refresh works either way via socket rejoin.
+[env]
+ROOM_STORE_PATH = "/data/rooms.json"

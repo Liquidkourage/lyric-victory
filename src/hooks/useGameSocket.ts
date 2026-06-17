@@ -51,17 +51,47 @@ function useGameState(code?: string) {
 }
 
 export function usePublicGame(code?: string) {
-  const { state, connected } = useGameState(code);
+  const [state, setState] = useState<PublicGameState | null>(null);
+  const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!code) return;
 
-    getSocket().emit("display:join", { code }, (response: { ok: boolean; error?: string }) => {
-      if (!response?.ok) {
-        setError(response?.error ?? "Unable to join room.");
-      }
-    });
+    const client = getSocket();
+
+    const joinDisplay = () => {
+      client.emit("display:join", { code }, (response: { ok: boolean; error?: string }) => {
+        if (!response?.ok) {
+          setError(response?.error ?? "Unable to join room.");
+        } else {
+          setError(null);
+        }
+      });
+    };
+
+    const onConnect = () => {
+      setConnected(true);
+      joinDisplay();
+    };
+    const onDisconnect = () => setConnected(false);
+    const onState = (nextState: PublicGameState) => setState(nextState);
+
+    client.on("connect", onConnect);
+    client.on("disconnect", onDisconnect);
+    client.on("game:state", onState);
+
+    if (client.connected) {
+      onConnect();
+    } else {
+      client.connect();
+    }
+
+    return () => {
+      client.off("connect", onConnect);
+      client.off("disconnect", onDisconnect);
+      client.off("game:state", onState);
+    };
   }, [code]);
 
   return { state, connected, error };
@@ -76,15 +106,32 @@ export function usePlayerGame(code: string, playerId: string | null) {
   useEffect(() => {
     if (!code || !playerId) return;
 
-    getSocket().emit(
-      "player:rejoin",
-      { code, playerId },
-      (response: { ok: boolean; error?: string }) => {
-        if (!response.ok) {
-          setJoinError(response.error ?? "Unable to rejoin room.");
-        }
-      },
-    );
+    const client = getSocket();
+
+    const rejoin = () => {
+      client.emit(
+        "player:rejoin",
+        { code, playerId },
+        (response: { ok: boolean; error?: string }) => {
+          if (!response.ok) {
+            setJoinError(response.error ?? "Unable to rejoin room.");
+          } else {
+            setJoinError(null);
+          }
+        },
+      );
+    };
+
+    client.on("connect", rejoin);
+    if (client.connected) {
+      rejoin();
+    } else {
+      client.connect();
+    }
+
+    return () => {
+      client.off("connect", rejoin);
+    };
   }, [code, playerId]);
 
   const guessWord = (word: string) =>
@@ -234,6 +281,12 @@ export function useHostGame(code: string, hostToken: string | null) {
   };
 }
 
+function storeHostToken(code: string, hostToken: string) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(`lv-host-${code}`, hostToken);
+  sessionStorage.setItem(`lv-host-${code}`, hostToken);
+}
+
 export function createRoom(): Promise<{ code: string; hostToken: string }> {
   return new Promise((resolve, reject) => {
     const client = getSocket();
@@ -245,7 +298,7 @@ export function createRoom(): Promise<{ code: string; hostToken: string }> {
         reject(new Error("Failed to create room."));
         return;
       }
-      sessionStorage.setItem(`lv-host-${response.code}`, response.hostToken);
+      storeHostToken(response.code, response.hostToken);
       resolve(response);
     });
   });
@@ -283,7 +336,7 @@ export function joinAsPlayer(
 
 export function getStoredHostToken(code: string): string | null {
   if (typeof window === "undefined") return null;
-  return sessionStorage.getItem(`lv-host-${code}`);
+  return localStorage.getItem(`lv-host-${code}`) ?? sessionStorage.getItem(`lv-host-${code}`);
 }
 
 export function getStoredPlayerId(code: string): string | null {
