@@ -1,7 +1,13 @@
+import type { Viewport } from "next";
+import { DisplayKioskShell } from "@/components/display-kiosk-shell";
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+};
+
 export default function DisplayLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="display-stage fixed inset-0 overflow-hidden text-[clamp(18px,1.15vw,22px)]">
-      {children}
-    </div>
-  );
+  return <DisplayKioskShell>{children}</DisplayKioskShell>;
 }

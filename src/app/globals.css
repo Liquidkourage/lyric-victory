@@ -116,3 +116,10 @@ code {
 .tv-revealed-word {
   animation: tv-reveal-pop 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
+
+.display-kiosk {
+  touch-action: none;
+  overscroll-behavior: none;
+  -webkit-user-select: none;
+  user-select: none;
+}

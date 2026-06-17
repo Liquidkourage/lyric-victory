@@ -758,15 +758,15 @@ export function PhaseCountdown({
       >
         <div
           className={`mb-2 flex items-center justify-between font-bold text-accent ${
-            isTv ? "text-xl" : compact ? "text-xs" : "text-sm"
+            isTv ? "text-2xl" : compact ? "text-xs" : "text-sm"
           }`}
         >
           <span>{label}</span>
-          <span className={isTv ? "font-display text-4xl font-black text-white" : undefined}>{seconds}s</span>
+          <span className={isTv ? "font-display text-5xl font-black text-white" : undefined}>{seconds}s</span>
         </div>
         <div
           className={`overflow-hidden rounded-full bg-[#1a1612] ${
-            isTv ? "h-5" : compact ? "h-2" : "h-3"
+            isTv ? "h-6" : compact ? "h-2" : "h-3"
           }`}
         >
           <div
@@ -796,7 +796,7 @@ export function DisplayPuzzleProgress({
     <div className={isTv ? "space-y-3" : compact ? "space-y-2" : "space-y-3"}>
       <div
         className={`flex items-end justify-between font-bold text-white ${
-          isTv ? "text-xl" : compact ? "text-xs" : "text-sm"
+          isTv ? "text-2xl" : compact ? "text-xs" : "text-sm"
         }`}
       >
         <span>{revealedBlanks} revealed</span>
@@ -804,7 +804,7 @@ export function DisplayPuzzleProgress({
       </div>
       <div
         className={`overflow-hidden rounded-full bg-[#1a1612] ${
-          isTv ? "h-5" : compact ? "h-2" : "h-3"
+          isTv ? "h-6" : compact ? "h-2" : "h-3"
         }`}
       >
         <div
@@ -814,7 +814,7 @@ export function DisplayPuzzleProgress({
       </div>
       <p
         className={`font-semibold text-white/80 ${
-          isTv ? "text-lg" : compact ? "text-xs" : "text-sm"
+          isTv ? "text-xl" : compact ? "text-xs" : "text-sm"
         }`}
       >
         {totalBlanks > 0 ? `${progress}% of words revealed` : "No blanks in this round"}

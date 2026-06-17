@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useParams } from "next/navigation";
 import { DisplayPuzzleProgress, PhaseCountdown, ScaledLyricBoard } from "@/components/game-ui";
 import { usePublicGame } from "@/hooks/useGameSocket";
@@ -20,7 +20,7 @@ function SidebarCard({
     <section
       className={`display-sidebar-panel flex min-h-0 flex-col overflow-hidden rounded-2xl p-4 ${className}`}
     >
-      <h2 className="mb-3 shrink-0 text-lg font-black uppercase tracking-wider text-[#fde047]">
+      <h2 className="mb-3 shrink-0 text-2xl font-black uppercase tracking-wider text-[#fde047]">
         {title}
       </h2>
       <div className="min-h-0 flex-1 overflow-hidden text-[#f4ede3]">{children}</div>
@@ -28,50 +28,18 @@ function SidebarCard({
   );
 }
 
-function ConnectionDot({ connected }: { connected: boolean }) {
+function ConnectionStatus({ connected }: { connected: boolean }) {
   return (
     <span
-      className={`inline-block h-4 w-4 shrink-0 rounded-full ring-2 ring-white/80 ${
-        connected ? "bg-[#16a34a]" : "bg-red-600"
+      className={`rounded-xl px-4 py-2 text-2xl font-black uppercase tracking-wide ring-2 ${
+        connected
+          ? "bg-[#16a34a] text-white ring-white/80"
+          : "bg-red-700 text-white ring-white/50"
       }`}
-      title={connected ? "Live" : "Offline"}
-      aria-label={connected ? "Connected" : "Offline"}
-    />
-  );
-}
-
-function FullscreenControl() {
-  const [expanded, setExpanded] = useState(false);
-
-  useEffect(() => {
-    const sync = () => setExpanded(Boolean(document.fullscreenElement));
-    sync();
-    document.addEventListener("fullscreenchange", sync);
-    return () => document.removeEventListener("fullscreenchange", sync);
-  }, []);
-
-  const toggle = useCallback(async () => {
-    try {
-      if (!document.fullscreenElement) {
-        await document.documentElement.requestFullscreen();
-        setExpanded(true);
-      } else {
-        await document.exitFullscreen();
-        setExpanded(false);
-      }
-    } catch {
-      // Browser may block without user gesture or on unsupported devices.
-    }
-  }, []);
-
-  return (
-    <button
-      type="button"
-      onClick={toggle}
-      className="rounded-xl bg-white/10 px-4 py-2 text-base font-bold uppercase tracking-wide text-white ring-1 ring-white/25 transition hover:bg-white/15"
+      aria-live="polite"
     >
-      {expanded ? "Exit fullscreen" : "Fullscreen"}
-    </button>
+      {connected ? "Live" : "Offline"}
+    </span>
   );
 }
 
@@ -109,37 +77,34 @@ export default function DisplayPage() {
         <header className="mb-3 flex shrink-0 items-start justify-between gap-6 border-b border-white/10 pb-3">
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1">
-              <h1 className="font-display text-5xl font-black leading-none text-white">
+              <h1 className="font-display text-6xl font-black leading-none text-white">
                 {state && state.currentRoundIndex >= 0
                   ? `Round ${state.currentRoundIndex + 1}`
                   : "Waiting for host"}
               </h1>
-              <p className="text-2xl font-bold text-[#fde047]">{phaseLabel}</p>
+              <p className="text-3xl font-bold text-[#fde047]">{phaseLabel}</p>
             </div>
             {acceptedSongGuess ? (
-              <p className="mt-2 text-3xl font-black text-white">
+              <p className="mt-2 text-4xl font-black leading-tight text-white">
                 {acceptedSongGuess.title}
                 <span className="ml-3 font-semibold text-white/65">— solved!</span>
               </p>
             ) : null}
           </div>
 
-          <div className="flex shrink-0 items-center gap-4">
-            <ConnectionDot connected={connected} />
-            <FullscreenControl />
-          </div>
+          <ConnectionStatus connected={connected} />
         </header>
 
         {error ? (
-          <div className="mb-3 shrink-0 rounded-2xl bg-red-900 px-5 py-4 text-xl font-bold text-white ring-2 ring-white/40">
+          <div className="mb-3 shrink-0 rounded-2xl bg-red-900 px-5 py-4 text-2xl font-bold text-white ring-2 ring-white/40">
             {error}
           </div>
         ) : null}
 
-        <section className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_380px] gap-4">
+        <section className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_400px] gap-4">
           <div className="tv-board-panel flex min-h-0 flex-col overflow-hidden rounded-2xl p-4">
             {state?.announcement ? (
-              <div className="display-announcement mb-3 shrink-0 rounded-xl px-6 py-4 text-center text-3xl font-black leading-tight tracking-wide text-[#1a1612]">
+              <div className="display-announcement mb-3 shrink-0 rounded-xl px-6 py-4 text-center text-4xl font-black leading-tight tracking-wide text-[#1a1612]">
                 {state.announcement}
               </div>
             ) : null}
@@ -166,9 +131,9 @@ export default function DisplayPage() {
               ) : state?.currentRound ? (
                 <DisplayPuzzleProgress lines={state.currentRound.lines} variant="tv" />
               ) : (
-                <p className="text-lg text-white/60">Waiting for round…</p>
+                <p className="text-xl font-semibold text-white/60">Waiting for round…</p>
               )}
-              <p className="mt-3 text-lg font-bold text-white/75">
+              <p className="mt-3 text-xl font-bold text-white/75">
                 Round {Math.max(0, (state?.currentRoundIndex ?? -1) + 1)} of{" "}
                 {state?.totalRounds ?? 0}
               </p>
@@ -185,16 +150,16 @@ export default function DisplayPage() {
                         : "bg-black/20 text-white/50 ring-white/10"
                     }`}
                   >
-                    <span className="min-w-0 flex-1 text-xl font-bold leading-tight">
+                    <span className="min-w-0 flex-1 break-words text-2xl font-bold leading-tight">
                       {index + 1}. {player.displayName}
                     </span>
-                    <span className="shrink-0 font-display text-2xl font-black text-[#fde047]">
+                    <span className="shrink-0 font-display text-3xl font-black text-[#fde047]">
                       {player.score}
                     </span>
                   </div>
                 ))}
                 {sortedPlayers.length === 0 ? (
-                  <p className="text-lg text-white/60">Waiting for players…</p>
+                  <p className="text-xl font-semibold text-white/60">Waiting for players…</p>
                 ) : null}
               </div>
             </SidebarCard>
@@ -208,16 +173,16 @@ export default function DisplayPage() {
                       : "bg-black/35 ring-white/15"
                   }`}
                 >
-                  <p className="text-base font-bold uppercase tracking-wide text-white/60">Latest word</p>
-                  <p className="mt-1 text-xl font-bold text-white">{latestWordGuess.playerName}</p>
+                  <p className="text-lg font-bold uppercase tracking-wide text-white/60">Latest word</p>
+                  <p className="mt-1 text-2xl font-bold text-white">{latestWordGuess.playerName}</p>
                   <p
-                    className={`mt-1 break-words text-3xl font-black uppercase leading-tight ${
+                    className={`mt-1 break-words text-4xl font-black uppercase leading-tight ${
                       latestWordGuess.accepted ? "text-[#fde047]" : "text-white/40 line-through"
                     }`}
                   >
                     {latestWordGuess.word}
                     {latestWordGuess.totalPoints ? (
-                      <span className="ml-2 text-xl font-bold text-white/70">
+                      <span className="ml-2 text-2xl font-bold text-white/70">
                         +{latestWordGuess.totalPoints}
                       </span>
                     ) : null}
@@ -229,7 +194,7 @@ export default function DisplayPage() {
                 {recentWordGuesses.slice(latestWordGuess ? 1 : 0).map((guess, index) => (
                   <div
                     key={`${guess.playerId}-${index}`}
-                    className="rounded-lg bg-black/30 px-3 py-2 text-lg ring-1 ring-white/10"
+                    className="rounded-lg bg-black/30 px-3 py-2 text-xl ring-1 ring-white/10"
                   >
                     <span className="font-bold text-white">{guess.playerName}</span>
                     <span className="text-white/45"> → </span>
@@ -249,7 +214,7 @@ export default function DisplayPage() {
                 {(state?.currentRound?.songGuesses ?? []).slice(0, 3).map((guess) => (
                   <div
                     key={`${guess.playerId}-${guess.submittedAt}`}
-                    className={`rounded-lg px-3 py-2 text-lg ring-2 ${
+                    className={`rounded-lg px-3 py-2 text-xl ring-2 ${
                       guess.accepted
                         ? "bg-[#16a34a]/30 font-semibold text-white ring-[#16a34a]"
                         : "bg-black/30 text-white/80 ring-white/10"
@@ -264,7 +229,7 @@ export default function DisplayPage() {
 
                 {recentWordGuesses.length === 0 &&
                 (state?.currentRound?.songGuesses.length ?? 0) === 0 ? (
-                  <p className="text-lg text-white/60">Guesses appear live here.</p>
+                  <p className="text-xl font-semibold text-white/60">Guesses appear live here.</p>
                 ) : null}
               </div>
             </SidebarCard>
@@ -272,7 +237,7 @@ export default function DisplayPage() {
         </section>
 
         <p
-          className="pointer-events-none absolute bottom-3 left-5 font-mono text-lg font-bold tracking-[0.2em] text-white/35"
+          className="pointer-events-none absolute bottom-3 left-5 font-mono text-xl font-bold tracking-[0.2em] text-white/45"
           aria-hidden
         >
           {roomCode}

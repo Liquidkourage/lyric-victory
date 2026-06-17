@@ -4,7 +4,7 @@ Real-time party game platform where players guess missing lyric words live, then
 
 - **Host console** — queue songs, run rounds, push announcements
 - **Player phones** — join with a room code, submit word and song guesses
-- **TV display** — 1080p board for the room
+- **TV display** — read-only fullscreen kiosk for the room (bar-distance legibility)
 
 ## Stack
 
