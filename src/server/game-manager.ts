@@ -9,10 +9,10 @@ import {
   titlesMatch,
 } from "../lib/lyrics";
 import { INCREDIBLY_COMMON_WORDS } from "../lib/common-words";
+import { FREE_FOR_ALL_MS, WORD_GUESS_COOLDOWN_MS } from "../lib/game-constants";
 import { generateRoomCode, normalizeRoomCode } from "../lib/room-code";
 import { getWordGuessPointValues } from "../lib/lyric-scoring";
 import type {
-  BeatState,
   HostGameState,
   Player,
   PublicGameState,
@@ -24,10 +24,7 @@ import type {
   WordGuessEntry,
 } from "../lib/types";
 
-const BEAT_DURATION_MS = 15_000;
 const ROOM_TTL_MS = 24 * 60 * 60 * 1000;
-const WORD_GUESS_COOLDOWN_MS = 10_000;
-const FREE_FOR_ALL_MS = 60_000;
 interface InternalRoom {
   code: string;
   hostSocketId: string | null;
@@ -38,12 +35,9 @@ interface InternalRoom {
   pendingRounds: RoundConfig[];
   rounds: RoundState[];
   currentRoundIndex: number;
-  beat: BeatState;
   announcement: string;
   recentWordGuesses: WordGuessEntry[];
-  beatTimer: NodeJS.Timeout | null;
   roundTimer: NodeJS.Timeout | null;
-  pendingWordGuesses: Map<string, { playerId: string; word: string }>;
   wordCooldowns: Map<string, number>;
   autoRevealWords: Set<string> | null;
   autoRevealTuningActive: boolean;
@@ -74,12 +68,9 @@ export class GameManager {
         pendingRounds: [],
         rounds: [],
         currentRoundIndex: -1,
-        beat: { number: 0, active: false, durationMs: BEAT_DURATION_MS, endsAt: null },
         announcement: "Waiting for players to join…",
         recentWordGuesses: [],
-        beatTimer: null,
         roundTimer: null,
-        pendingWordGuesses: new Map(),
         wordCooldowns: new Map(),
         autoRevealWords: null,
         autoRevealTuningActive: false,
@@ -350,37 +341,12 @@ export class GameManager {
         callback({ ok: false, error: "No active round." });
         return;
       }
-      this.clearBeatTimer(room);
       this.clearRoundTimer(room);
       room.phase = "word-guess";
-      room.beat = { number: 0, active: false, durationMs: BEAT_DURATION_MS, endsAt: null };
       room.recentWordGuesses = [];
-      room.pendingWordGuesses.clear();
       room.wordCooldowns.clear();
       room.announcement = "Guess words now. Name the song any time.";
       room.updatedAt = Date.now();
-      callback({ ok: true });
-      this.broadcast(code);
-    });
-
-    socket.on("host:start-beat", ({ code, hostToken }, callback) => {
-      const room = this.requireHost(code, hostToken, socket.id);
-      if (!room || room.phase !== "word-guess") {
-        callback({ ok: false, error: "Word phase is not active." });
-        return;
-      }
-      room.announcement = "Word guessing is always live.";
-      callback({ ok: true });
-      this.broadcast(code);
-    });
-
-    socket.on("host:end-beat", ({ code, hostToken }, callback) => {
-      const room = this.requireHost(code, hostToken, socket.id);
-      if (!room || room.phase !== "word-guess") {
-        callback({ ok: false, error: "Word phase is not active." });
-        return;
-      }
-      room.announcement = "Word guesses resolve as soon as they arrive.";
       callback({ ok: true });
       this.broadcast(code);
     });
@@ -391,10 +357,8 @@ export class GameManager {
         callback({ ok: false, error: "No active round." });
         return;
       }
-      this.clearBeatTimer(room);
       this.clearRoundTimer(room);
       room.phase = "song-guess";
-      room.beat = { number: room.beat.number, active: false, durationMs: BEAT_DURATION_MS, endsAt: null };
       room.announcement = "Final title chance. Players who have not solved it get one guess.";
       room.updatedAt = Date.now();
       callback({ ok: true });
@@ -417,10 +381,8 @@ export class GameManager {
         room.announcement = `Round ${room.currentRoundIndex + 1} — guess the words!`;
         room.recentWordGuesses = [];
       }
-      this.clearBeatTimer(room);
       this.clearRoundTimer(room);
       room.wordCooldowns.clear();
-      room.beat = { number: 0, active: false, durationMs: BEAT_DURATION_MS, endsAt: null };
       room.updatedAt = Date.now();
       callback({ ok: true });
       this.broadcast(code);
@@ -434,7 +396,6 @@ export class GameManager {
       }
       room.phase = "ended";
       room.announcement = "Game ended by host.";
-      this.clearBeatTimer(room);
       this.clearRoundTimer(room);
       room.updatedAt = Date.now();
       callback({ ok: true });
@@ -579,7 +540,6 @@ export class GameManager {
         playerName: player.displayName,
         word,
         blankIndex: -1,
-        beatNumber: 0,
         accepted: false,
         points: 0,
         submittedAt,
@@ -605,7 +565,6 @@ export class GameManager {
         playerName: player.displayName,
         word,
         blankIndex,
-        beatNumber: 0,
         accepted: true,
         points,
         submittedAt,
@@ -634,91 +593,19 @@ export class GameManager {
     const round = room.rounds[room.currentRoundIndex];
     if (!round) return;
 
-    this.clearBeatTimer(room);
     this.clearRoundTimer(room);
     room.phase = "between-rounds";
-    room.beat = { number: room.beat.number, active: true, durationMs: FREE_FOR_ALL_MS, endsAt: now + FREE_FOR_ALL_MS };
     round.songSolvedAt = now;
     round.freeForAllEndsAt = now + FREE_FOR_ALL_MS;
     room.announcement = "Song named! Open word rush for 60 seconds.";
 
     room.roundTimer = setTimeout(() => {
       room.phase = "song-guess";
-      room.beat = { number: room.beat.number, active: false, durationMs: BEAT_DURATION_MS, endsAt: null };
+      round.freeForAllEndsAt = null;
       room.announcement = "Final title chance. Players who have not solved it get one guess.";
       room.updatedAt = Date.now();
       this.broadcast(room.code);
     }, FREE_FOR_ALL_MS);
-  }
-
-  private startBeat(room: InternalRoom) {
-    this.clearBeatTimer(room);
-    room.beat.number += 1;
-    room.beat.active = true;
-    room.beat.endsAt = Date.now() + room.beat.durationMs;
-    room.announcement = `Beat ${room.beat.number} — submit your word guesses!`;
-    room.pendingWordGuesses.clear();
-    room.updatedAt = Date.now();
-
-    room.beatTimer = setTimeout(() => {
-      this.resolveBeat(room);
-      this.broadcast(room.code);
-    }, room.beat.durationMs);
-  }
-
-  private resolveBeat(room: InternalRoom) {
-    if (!room.beat.active && room.pendingWordGuesses.size === 0) {
-      return;
-    }
-
-    this.clearBeatTimer(room);
-    room.beat.active = false;
-    room.beat.endsAt = null;
-
-    const round = room.rounds[room.currentRoundIndex];
-    if (!round) return;
-
-    const answerMap = new Map<number, string>();
-    round.tokens.forEach((token) => {
-      if (token.type === "blank") {
-        answerMap.set(token.index, round.answers[token.index]?.toLowerCase() ?? "");
-      }
-    });
-
-    for (const [playerId, submission] of room.pendingWordGuesses.entries()) {
-      const player = room.players.get(playerId);
-      if (!player) continue;
-
-      for (const [blankIndex, answer] of answerMap.entries()) {
-        if (round.revealedBlankIndices.includes(blankIndex)) continue;
-        if (submission.word !== answer) continue;
-
-        if (!round.revealedBlankIndices.includes(blankIndex)) {
-          round.revealedBlankIndices.push(blankIndex);
-        }
-
-        room.recentWordGuesses.unshift({
-          playerId,
-          playerName: player.displayName,
-          word: submission.word,
-          blankIndex,
-          beatNumber: room.beat.number,
-          accepted: true,
-        });
-      }
-    }
-
-    room.recentWordGuesses = room.recentWordGuesses.slice(0, 12);
-    room.pendingWordGuesses.clear();
-    room.announcement = `Beat ${room.beat.number} closed — check the board!`;
-    room.updatedAt = Date.now();
-  }
-
-  private clearBeatTimer(room: InternalRoom) {
-    if (room.beatTimer) {
-      clearTimeout(room.beatTimer);
-      room.beatTimer = null;
-    }
   }
 
   private clearRoundTimer(room: InternalRoom) {
@@ -859,7 +746,6 @@ export class GameManager {
       currentRound,
       currentRoundIndex: this.getDisplayRoundIndex(room),
       totalRounds: this.getDisplayTotalRounds(room),
-      beat: { ...room.beat },
       phaseEndsAt: this.getPhaseEndsAt(room),
       recentWordGuesses: room.recentWordGuesses,
       roundHistory: [],
@@ -921,7 +807,6 @@ export class GameManager {
     const cutoff = Date.now() - ROOM_TTL_MS;
     for (const [code, room] of this.rooms.entries()) {
       if (room.updatedAt < cutoff) {
-        this.clearBeatTimer(room);
         this.clearRoundTimer(room);
         this.rooms.delete(code);
       }

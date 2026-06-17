@@ -14,7 +14,7 @@ export default function HomePage() {
             Lyric <span className="bg-gradient-to-r from-ink to-amber-400 bg-clip-text text-transparent">Victory</span>
           </h1>
           <p className="mx-auto mt-4 max-w-2xl text-lg text-[#c4b5a0]">
-            A room-scale word game built around songs and lines. Fill in the blanks beat by beat,
+            A room-scale word game built around songs and lines. Fill in the blanks live,
             then name the track before the room beats you to it.
           </p>
         </div>
@@ -40,7 +40,7 @@ export default function HomePage() {
 
           <Panel title="TV Display">
             <p className="mb-5 text-sm text-[#c4b5a0]">
-              Put the manuscript board on the big screen — numbered blanks, live guesses, and the beat.
+              Put the manuscript board on the big screen — numbered blanks, live guesses, and the scoreboard.
             </p>
             <Link href="/play">
               <SecondaryButton className="w-full">Use Room Code From Host</SecondaryButton>

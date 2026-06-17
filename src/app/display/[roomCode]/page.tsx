@@ -1,13 +1,16 @@
 "use client";
 
+import { useMemo } from "react";
 import { useParams } from "next/navigation";
 import {
-  BeatTimer,
+  DisplayPuzzleProgress,
   PhaseBadge,
+  PhaseCountdown,
   RoomCodeBadge,
   ScaledLyricBoard,
 } from "@/components/game-ui";
 import { usePublicGame } from "@/hooks/useGameSocket";
+import { FREE_FOR_ALL_MS } from "@/lib/game-constants";
 import { groupWordGuessEntries } from "@/lib/guess-events";
 
 function SidebarCard({
@@ -36,6 +39,10 @@ export default function DisplayPage() {
   const roomCode = params.roomCode.toUpperCase();
   const { state, connected, error } = usePublicGame(roomCode);
   const recentWordGuesses = groupWordGuessEntries(state?.recentWordGuesses ?? []).slice(0, 5);
+  const sortedPlayers = useMemo(
+    () => [...(state?.players ?? [])].sort((a, b) => b.score - a.score || a.displayName.localeCompare(b.displayName)),
+    [state?.players],
+  );
 
   const phaseLabel =
     state?.announcement?.startsWith("Auto-reveal tuning")
@@ -47,6 +54,8 @@ export default function DisplayPage() {
         : state?.phase === "word-guess"
           ? "Guess words and title"
           : "Song title hidden";
+
+  const showWordRushTimer = state?.phase === "between-rounds" && state.phaseEndsAt !== null;
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden text-[#f4ede3]">
@@ -103,33 +112,43 @@ export default function DisplayPage() {
           </div>
 
           <aside className="grid min-h-0 grid-rows-4 gap-3">
-            <SidebarCard title={state?.phase === "between-rounds" ? "Rush Timer" : "Round"}>
-              <BeatTimer
-                active={state?.beat.active ?? false}
-                endsAt={state?.beat.endsAt ?? null}
-                durationMs={state?.beat.durationMs ?? 15000}
-                compact
-              />
+            <SidebarCard title={showWordRushTimer ? "Word Rush" : "Puzzle"}>
+              {showWordRushTimer ? (
+                <PhaseCountdown
+                  label="Open word rush"
+                  active
+                  endsAt={state.phaseEndsAt}
+                  durationMs={FREE_FOR_ALL_MS}
+                  compact
+                />
+              ) : state?.currentRound ? (
+                <DisplayPuzzleProgress lines={state.currentRound.lines} compact />
+              ) : (
+                <p className="text-sm text-white/60">Waiting for round…</p>
+              )}
               <p className="mt-2 text-sm font-medium text-white/70">
                 Round {Math.max(0, (state?.currentRoundIndex ?? -1) + 1)} of {state?.totalRounds ?? 0}
               </p>
             </SidebarCard>
 
-            <SidebarCard title="Players">
-              <div className="flex flex-wrap gap-2 overflow-hidden">
-                {(state?.players ?? []).map((player) => (
-                  <span
+            <SidebarCard title="Leaderboard">
+              <div className="space-y-2 overflow-hidden">
+                {sortedPlayers.map((player, index) => (
+                  <div
                     key={player.id}
-                    className={`rounded-full px-3 py-1 text-sm font-bold ${
+                    className={`flex items-center justify-between rounded-lg px-3 py-2 text-sm ring-1 ${
                       player.connected
-                        ? "bg-[#16a34a] text-white ring-2 ring-white/70"
-                        : "bg-white/10 text-white/50"
+                        ? "bg-black/35 text-white ring-white/15"
+                        : "bg-black/20 text-white/50 ring-white/10"
                     }`}
                   >
-                    {player.displayName} - {player.score}
-                  </span>
+                    <span className="truncate font-bold">
+                      {index + 1}. {player.displayName}
+                    </span>
+                    <span className="ml-2 shrink-0 font-black text-[#fde047]">{player.score}</span>
+                  </div>
                 ))}
-                {(state?.players.length ?? 0) === 0 ? (
+                {sortedPlayers.length === 0 ? (
                   <p className="text-sm text-white/60">Waiting for players…</p>
                 ) : null}
               </div>
@@ -144,7 +163,9 @@ export default function DisplayPage() {
                   >
                     <span className="font-bold text-white">{guess.playerName}</span>
                     <span className="text-white/50"> {"->"} </span>
-                    <span className="font-black uppercase text-[#fde047]">{guess.word}</span>
+                    <span className={`font-black uppercase ${guess.accepted ? "text-[#fde047]" : "text-white/45"}`}>
+                      {guess.word}
+                    </span>
                     {guess.count > 1 ? (
                       <span className="ml-2 rounded-full bg-white/15 px-2 py-0.5 text-xs font-black text-white">
                         {guess.count}

@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
+import { getBlankProgress } from "@/lib/round-progress";
 import type { PublicLine, PublicToken } from "@/lib/types";
 
 const LINE_BREAK_MARKER = "/";
@@ -552,8 +553,8 @@ export function HostRoundSummary({ lines }: { lines: PublicLine[] }) {
         {lineCount} lyric lines · {blankCount} hidden words
       </p>
       <p className="mt-2 text-sm text-[#c4b5a0]">
-        The full puzzle board lives on the TV display. Use this console to run beats and manage the
-        round.
+        The full puzzle board lives on the TV display. Use this console to run rounds and push
+        announcements.
       </p>
     </div>
   );
@@ -684,35 +685,30 @@ export function ScaledLyricBoard({ lines }: { lines: PublicLine[] }) {
   );
 }
 
-export function BeatTimer({
+export function PhaseCountdown({
+  label,
   active,
   endsAt,
   durationMs,
   compact = false,
 }: {
+  label: string;
   active: boolean;
   endsAt: number | null;
   durationMs: number;
   compact?: boolean;
 }) {
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(0);
 
   useEffect(() => {
+    setNow(Date.now());
     if (!active || !endsAt) return;
     const interval = setInterval(() => setNow(Date.now()), 100);
     return () => clearInterval(interval);
   }, [active, endsAt]);
 
   if (!active || !endsAt) {
-    return (
-      <div
-        className={`rounded-xl bg-surface-muted text-center font-medium text-[#8a7d6b] ${
-          compact ? "px-3 py-2 text-xs" : "px-4 py-3 text-sm"
-        }`}
-      >
-        Beat idle
-      </div>
-    );
+    return null;
   }
 
   const remaining = Math.max(0, endsAt - now);
@@ -727,7 +723,7 @@ export function BeatTimer({
             compact ? "text-xs" : "text-sm"
           }`}
         >
-          <span>Beat active</span>
+          <span>{label}</span>
           <span>{seconds}s</span>
         </div>
         <div className={`overflow-hidden rounded-full bg-[#1a1612] ${compact ? "h-2" : "h-3"}`}>
@@ -737,6 +733,35 @@ export function BeatTimer({
           />
         </div>
       </div>
+    </div>
+  );
+}
+
+export function DisplayPuzzleProgress({
+  lines,
+  compact = false,
+}: {
+  lines: PublicLine[];
+  compact?: boolean;
+}) {
+  const { totalBlanks, revealedBlanks, hiddenBlanks } = getBlankProgress(lines);
+  const progress = totalBlanks > 0 ? Math.round((revealedBlanks / totalBlanks) * 100) : 0;
+
+  return (
+    <div className={compact ? "space-y-2" : "space-y-3"}>
+      <div className={`flex items-end justify-between ${compact ? "text-xs" : "text-sm"} font-semibold text-white`}>
+        <span>{revealedBlanks} revealed</span>
+        <span className="text-white/60">{hiddenBlanks} hidden</span>
+      </div>
+      <div className={`overflow-hidden rounded-full bg-[#1a1612] ${compact ? "h-2" : "h-3"}`}>
+        <div
+          className="h-full rounded-full bg-gradient-to-r from-[#fde047] to-[#f59e0b] transition-all duration-300"
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+      <p className={`${compact ? "text-xs" : "text-sm"} font-medium text-white/70`}>
+        {totalBlanks > 0 ? `${progress}% of words revealed` : "No blanks in this round"}
+      </p>
     </div>
   );
 }

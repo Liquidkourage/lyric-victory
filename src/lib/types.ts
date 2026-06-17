@@ -54,19 +54,11 @@ export interface RoundState {
   finalTitleAttempts: string[];
 }
 
-export interface BeatState {
-  number: number;
-  active: boolean;
-  durationMs: number;
-  endsAt: number | null;
-}
-
 export interface WordGuessEntry {
   playerId: string;
   playerName: string;
   word: string;
   blankIndex: number;
-  beatNumber: number;
   accepted: boolean;
   points?: number;
   submittedAt?: number;
@@ -90,7 +82,6 @@ export interface PublicGameState {
   currentRound: PublicRoundState | null;
   currentRoundIndex: number;
   totalRounds: number;
-  beat: BeatState;
   phaseEndsAt: number | null;
   recentWordGuesses: WordGuessEntry[];
   roundHistory: { title: string; artist: string }[];

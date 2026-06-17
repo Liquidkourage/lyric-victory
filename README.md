@@ -1,8 +1,8 @@
 # Lyric Victory
 
-Real-time party game platform where players guess missing lyric words beat-by-beat, then name the song. Built for three surfaces:
+Real-time party game platform where players guess missing lyric words live, then name the song. Built for three surfaces:
 
-- **Host console** — queue songs, run beats, push announcements
+- **Host console** — queue songs, run rounds, push announcements
 - **Player phones** — join with a room code, submit word and song guesses
 - **TV display** — 1080p board for the room
 
@@ -30,7 +30,7 @@ The dev server runs through `server.ts`, which mounts both Next.js and Socket.io
 2. Host searches songs and builds a setlist
 3. Players join at `/play` with the room code
 4. TV display opens at `/display/[ROOMCODE]`
-5. Host starts the game, launches word-guess beats, then moves to song guessing
+5. Host starts the game and opens word guessing — correct words reveal instantly on the board
 6. Host manually advances rounds
 
 ## Lyric format
@@ -81,7 +81,7 @@ No required secrets for MVP. Optional:
 
 - Game state is in-memory on the server (good for small/medium concurrent rooms on a single instance)
 - Host auth is a browser session token stored in `sessionStorage`
-- Scoring is intentionally deferred for a later iteration
+- Word guesses score by lyric rarity; common grammar words auto-reveal on the board
 
 ## Scripts
 

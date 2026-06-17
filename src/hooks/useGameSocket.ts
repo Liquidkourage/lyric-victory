@@ -214,8 +214,6 @@ export function useHostGame(code: string, hostToken: string | null) {
       emitHost<{ ok: boolean; error?: string }>("host:set-announcement", { message }),
     startGame: () => emitHost<{ ok: boolean; error?: string }>("host:start-game", {}),
     startWordPhase: () => emitHost<{ ok: boolean; error?: string }>("host:start-word-phase", {}),
-    startBeat: () => emitHost<{ ok: boolean; error?: string }>("host:start-beat", {}),
-    endBeat: () => emitHost<{ ok: boolean; error?: string }>("host:end-beat", {}),
     startSongPhase: () => emitHost<{ ok: boolean; error?: string }>("host:start-song-phase", {}),
     nextRound: () => emitHost<{ ok: boolean; error?: string }>("host:next-round", {}),
     endGame: () => emitHost<{ ok: boolean; error?: string }>("host:end-game", {}),
