@@ -19,7 +19,8 @@ The TV display is a **read-only fullscreen kiosk**. It never hosts controls, for
 ## Lyric board (all lyrics on screen)
 
 - **Every line visible at once** — no pagination; scale to fit the full song
-- **One lyric line per row**, left-aligned
+- **Multi-column layout** — distribute lines across the full board width (newspaper columns)
+- **One lyric line per row** within each column
 - **Hidden blanks**: high-contrast cream chip + bold black letter count
 - **Pre-revealed**: inline white text (saves horizontal space)
 - **Player-revealed**: gold chip + pop animation

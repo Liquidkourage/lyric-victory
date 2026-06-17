@@ -4,7 +4,9 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { getBlankProgress } from "@/lib/round-progress";
 import {
-  getRowGapRemForLineCount,
+  distributeLinesToColumns,
+  getColumnCountCandidates,
+  getRowGapRemForColumn,
   getVisibleLyricLines,
   sanitizeLineTokensForTv,
 } from "@/lib/tv-board-layout";
@@ -29,6 +31,7 @@ const TV = {
   markGapRem: 0.5,
   segmentGapRem: 0.85,
   rowGapRem: 1.2,
+  columnGapRem: 1.25,
   edgePaddingRem: 0.75,
   absMinScale: 0.14,
   maxScale: 1.25,
@@ -59,6 +62,9 @@ function estimateBlankWidthRem(length: number): number {
 
 function estimateTokenWidthRem(token: PublicToken): number {
   if (token.type === "blank") {
+    if (token.revealed && token.answer && token.autoRevealed) {
+      return token.answer.length * 0.72;
+    }
     return estimateBlankWidthRem(token.revealed && token.answer ? token.answer.length : token.length);
   }
 
@@ -374,23 +380,28 @@ function collectTvRowItems(row: DisplayRow): React.ReactNode[] {
   return items;
 }
 
-function rowsFitWidth(content: HTMLDivElement, availableWidth: number): boolean {
-  const rowElements = content.querySelectorAll<HTMLElement>("[data-tv-row-inner]");
+function columnsFitWidth(content: HTMLDivElement): boolean {
+  const columnElements = content.querySelectorAll<HTMLElement>("[data-tv-column]");
   let fits = true;
 
-  rowElements.forEach((row) => {
-    if (row.scrollWidth > availableWidth + 1) fits = false;
+  columnElements.forEach((column) => {
+    const availableWidth = column.clientWidth;
+    column.querySelectorAll<HTMLElement>("[data-tv-row-inner]").forEach((row) => {
+      if (row.scrollWidth > availableWidth + 1) fits = false;
+    });
   });
 
   return fits;
 }
 
-function measureScaleForRows(
+function measureScaleForColumns(
   content: HTMLDivElement,
-  rowCount: number,
+  maxRowsPerColumn: number,
   containerWidth: number,
   containerHeight: number,
   rowGapRem: number,
+  columnGapRem: number,
+  columnCount: number,
 ): { scale: number; fits: boolean } {
   const rootRem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
 
@@ -402,13 +413,16 @@ function measureScaleForRows(
   const fitsAtScale = (scale: number) => {
     content.style.setProperty("--tv-scale", String(scale));
 
-    const rowGapTotalPx = Math.max(0, rowCount - 1) * rowGapRem * scale * rootRem;
-    const rowBandHeight = (containerHeight - rowGapTotalPx) / Math.max(rowCount, 1);
+    const rowGapTotalPx = Math.max(0, maxRowsPerColumn - 1) * rowGapRem * scale * rootRem;
+    const rowBandHeight = (containerHeight - rowGapTotalPx) / Math.max(maxRowsPerColumn, 1);
     const tileHeightPx = TV.tileHeightRem * scale * rootRem;
-    const availableWidth = containerWidth - TV.edgePaddingRem * scale * rootRem * 2;
+    const horizontalChrome =
+      TV.edgePaddingRem * scale * rootRem * 2 +
+      Math.max(0, columnCount - 1) * columnGapRem * scale * rootRem;
 
+    if (containerWidth <= horizontalChrome) return false;
     if (tileHeightPx > rowBandHeight * TV.verticalFitRatio) return false;
-    return rowsFitWidth(content, availableWidth);
+    return columnsFitWidth(content);
   };
 
   for (let attempt = 0; attempt < 22; attempt += 1) {
@@ -432,7 +446,7 @@ function TvLyricRow({ row }: { row: DisplayRow }) {
   return (
     <div
       data-tv-row
-      className="flex min-h-0 w-full flex-1 items-center justify-start py-[calc(0.14rem*var(--tv-scale,1))]"
+      className="flex w-full shrink-0 items-center justify-start py-[calc(0.1rem*var(--tv-scale,1))]"
     >
       <div
         data-tv-row-inner
@@ -441,6 +455,25 @@ function TvLyricRow({ row }: { row: DisplayRow }) {
       >
         {items}
       </div>
+    </div>
+  );
+}
+
+function TvLyricColumn({ lines }: { lines: PublicLine[] }) {
+  const rowGap = `calc(var(--tv-row-gap, ${TV.rowGapRem}rem) * var(--tv-scale, 1))`;
+
+  return (
+    <div
+      data-tv-column
+      className="flex min-w-0 flex-1 flex-col justify-start overflow-hidden"
+      style={{ gap: rowGap }}
+    >
+      {lines.map((line, lineIndex) => (
+        <TvLyricRow
+          key={lineIndex}
+          row={{ segments: [{ type: "line", tokens: line.tokens }] }}
+        />
+      ))}
     </div>
   );
 }
@@ -628,10 +661,16 @@ export function LyricBoard({
 export function ScaledLyricBoard({ lines }: { lines: PublicLine[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
-  const [layout, setLayout] = useState<{ rows: DisplayRow[]; scale: number; rowGapRem: number }>(() => ({
-    rows: linesToDisplayRows(lines),
+  const [layout, setLayout] = useState<{
+    columns: PublicLine[][];
+    scale: number;
+    rowGapRem: number;
+    columnCount: number;
+  }>(() => ({
+    columns: [getVisibleLyricLines(lines)],
     scale: 1,
     rowGapRem: TV.rowGapRem,
+    columnCount: 1,
   }));
 
   useLayoutEffect(() => {
@@ -639,33 +678,56 @@ export function ScaledLyricBoard({ lines }: { lines: PublicLine[] }) {
     const content = contentRef.current;
     if (!container || !content) return;
 
-    const rows = linesToDisplayRows(lines);
-    if (rows.length === 0) {
-      setLayout({ rows: [], scale: 1, rowGapRem: TV.rowGapRem });
+    const visibleLines = getVisibleLyricLines(lines);
+    if (visibleLines.length === 0) {
+      setLayout({ columns: [], scale: 1, rowGapRem: TV.rowGapRem, columnCount: 1 });
       return;
     }
-
-    const rowGapRem = getRowGapRemForLineCount(rows.length, TV.rowGapRem);
 
     const runLayout = () => {
       const containerWidth = container.clientWidth;
       const containerHeight = container.clientHeight;
       if (containerWidth <= 0 || containerHeight <= 0) return;
 
-      flushSync(() => {
-        setLayout({ rows, scale: 1, rowGapRem });
-      });
+      let best = {
+        columns: distributeLinesToColumns(visibleLines, 1),
+        scale: TV.absMinScale,
+        rowGapRem: TV.rowGapRem,
+        columnCount: 1,
+        fits: false,
+      };
 
-      const { scale } = measureScaleForRows(
-        content,
-        rows.length,
-        containerWidth,
-        containerHeight,
-        rowGapRem,
-      );
+      for (const columnCount of getColumnCountCandidates(visibleLines.length)) {
+        const columns = distributeLinesToColumns(visibleLines, columnCount);
+        const maxRowsPerColumn = Math.max(...columns.map((column) => column.length));
+        const rowGapRem = getRowGapRemForColumn(visibleLines.length, columnCount, TV.rowGapRem);
+
+        flushSync(() => {
+          setLayout({ columns, scale: 1, rowGapRem, columnCount });
+        });
+
+        const { scale, fits } = measureScaleForColumns(
+          content,
+          maxRowsPerColumn,
+          containerWidth,
+          containerHeight,
+          rowGapRem,
+          TV.columnGapRem,
+          columns.length,
+        );
+
+        if (scale > best.scale || (scale === best.scale && columnCount > best.columnCount)) {
+          best = { columns, scale, rowGapRem, columnCount, fits };
+        }
+      }
 
       flushSync(() => {
-        setLayout({ rows, scale, rowGapRem });
+        setLayout({
+          columns: best.columns,
+          scale: best.scale,
+          rowGapRem: best.rowGapRem,
+          columnCount: best.columnCount,
+        });
       });
     };
 
@@ -676,25 +738,26 @@ export function ScaledLyricBoard({ lines }: { lines: PublicLine[] }) {
     return () => observer.disconnect();
   }, [lines]);
 
-  const rowGap = `calc(${layout.rowGapRem}rem * var(--tv-scale, 1))`;
+  const columnGap = `calc(${TV.columnGapRem}rem * var(--tv-scale, 1))`;
   const edgePadding = getTvEdgePadding();
 
   return (
     <div ref={containerRef} className="min-h-0 w-full flex-1 overflow-hidden">
       <div
         ref={contentRef}
-        className="flex h-full w-full flex-col overflow-hidden"
+        className="flex h-full w-full flex-row items-stretch overflow-hidden"
         style={
           {
             "--tv-scale": layout.scale,
-            gap: rowGap,
+            "--tv-row-gap": `${layout.rowGapRem}rem`,
+            gap: columnGap,
             paddingLeft: edgePadding,
             paddingRight: edgePadding,
           } as React.CSSProperties
         }
       >
-        {layout.rows.map((row, rowIndex) => (
-          <TvLyricRow key={rowIndex} row={row} />
+        {layout.columns.map((columnLines, columnIndex) => (
+          <TvLyricColumn key={columnIndex} lines={columnLines} />
         ))}
       </div>
     </div>
