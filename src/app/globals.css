@@ -97,3 +97,22 @@ code {
     0 0 40px rgba(251, 191, 36, 0.35),
     inset 0 1px 0 rgba(255, 255, 255, 0.35);
 }
+
+@keyframes tv-reveal-pop {
+  0% {
+    transform: scale(0.82);
+    box-shadow: 0 0 0 rgba(253, 224, 71, 0);
+  }
+  45% {
+    transform: scale(1.08);
+    box-shadow: 0 0 32px rgba(253, 224, 71, 0.65);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 20px rgba(253, 224, 71, 0.35);
+  }
+}
+
+.tv-revealed-word {
+  animation: tv-reveal-pop 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}

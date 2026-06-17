@@ -25,7 +25,7 @@ const TV = {
   segmentGapRem: 0.85,
   rowGapRem: 1.1,
   edgePaddingRem: 1.15,
-  minScale: 0.38,
+  minScale: 0.52,
   maxScale: 1.2,
 };
 
@@ -260,6 +260,21 @@ function TvBreakMark({ value, label }: { value: string; label: string }) {
 
 function TvPunctuation({ value }: { value: string }) {
   return <TvBreakMark value={value} label="Punctuation" />;
+}
+
+function TvRevealedWord({ value }: { value: string }) {
+  const style = getBlankStyle(value.length, "tv");
+
+  return (
+    <span
+      key={value}
+      style={style}
+      className="tv-revealed-word inline-flex shrink-0 items-center justify-center self-center rounded-xl bg-[#fde047] px-[calc(0.75rem*var(--tv-scale,1))] font-black uppercase leading-none tracking-wide text-[#17120b] ring-[3px] ring-white/90"
+      aria-label="Revealed word"
+    >
+      {value.toUpperCase()}
+    </span>
+  );
 }
 
 function TvPunctuationUnit({ children }: { children: React.ReactNode }) {
@@ -512,7 +527,7 @@ function BlankTile({
 
   if (token.revealed && token.answer) {
     if (size === "tv") {
-      return <TvBreakMark value={token.answer.toUpperCase()} label="Revealed word" />;
+      return <TvRevealedWord value={token.answer} />;
     }
 
     return (
@@ -530,7 +545,7 @@ function BlankTile({
       style={style}
       className={
         size === "tv"
-          ? `inline-flex items-center justify-center rounded-xl bg-[#d6a932] font-black tabular-nums text-[#17120b] shadow-[0_0_20px_rgba(214,169,50,0.28)] ring-[3px] ring-white/90 ${className}`
+          ? `inline-flex items-center justify-center rounded-xl bg-[#d6a932] font-black tabular-nums text-[#17120b] shadow-[0_0_24px_rgba(214,169,50,0.38)] ring-[4px] ring-white ${className}`
           : `inline-flex items-center justify-center rounded-md bg-surface-muted font-bold tabular-nums text-ink-bright ring-2 ring-ink/30 ${className}`
       }
       aria-label={`${token.length} letter blank`}
@@ -691,12 +706,14 @@ export function PhaseCountdown({
   endsAt,
   durationMs,
   compact = false,
+  variant = "default",
 }: {
   label: string;
   active: boolean;
   endsAt: number | null;
   durationMs: number;
   compact?: boolean;
+  variant?: "default" | "tv";
 }) {
   const [now, setNow] = useState(0);
 
@@ -715,18 +732,28 @@ export function PhaseCountdown({
   const seconds = Math.ceil(remaining / 1000);
   const progress = Math.max(0, Math.min(100, (remaining / durationMs) * 100));
 
+  const isTv = variant === "tv";
+
   return (
-    <div className="rounded-xl bg-gradient-to-r from-accent to-accent-deep p-[2px]">
-      <div className={`rounded-[10px] bg-surface-elevated ${compact ? "px-3 py-2" : "px-5 py-4"}`}>
+    <div className={`rounded-xl bg-gradient-to-r from-accent to-accent-deep ${isTv ? "p-[3px]" : "p-[2px]"}`}>
+      <div
+        className={`rounded-[10px] bg-surface-elevated ${
+          isTv ? "px-4 py-4" : compact ? "px-3 py-2" : "px-5 py-4"
+        }`}
+      >
         <div
-          className={`mb-1.5 flex items-center justify-between font-semibold text-accent ${
-            compact ? "text-xs" : "text-sm"
+          className={`mb-2 flex items-center justify-between font-bold text-accent ${
+            isTv ? "text-xl" : compact ? "text-xs" : "text-sm"
           }`}
         >
           <span>{label}</span>
-          <span>{seconds}s</span>
+          <span className={isTv ? "font-display text-4xl font-black text-white" : undefined}>{seconds}s</span>
         </div>
-        <div className={`overflow-hidden rounded-full bg-[#1a1612] ${compact ? "h-2" : "h-3"}`}>
+        <div
+          className={`overflow-hidden rounded-full bg-[#1a1612] ${
+            isTv ? "h-5" : compact ? "h-2" : "h-3"
+          }`}
+        >
           <div
             className="h-full rounded-full bg-gradient-to-r from-ink to-ink-bright transition-all duration-200"
             style={{ width: `${progress}%` }}
@@ -740,26 +767,41 @@ export function PhaseCountdown({
 export function DisplayPuzzleProgress({
   lines,
   compact = false,
+  variant = "default",
 }: {
   lines: PublicLine[];
   compact?: boolean;
+  variant?: "default" | "tv";
 }) {
   const { totalBlanks, revealedBlanks, hiddenBlanks } = getBlankProgress(lines);
   const progress = totalBlanks > 0 ? Math.round((revealedBlanks / totalBlanks) * 100) : 0;
+  const isTv = variant === "tv";
 
   return (
-    <div className={compact ? "space-y-2" : "space-y-3"}>
-      <div className={`flex items-end justify-between ${compact ? "text-xs" : "text-sm"} font-semibold text-white`}>
+    <div className={isTv ? "space-y-3" : compact ? "space-y-2" : "space-y-3"}>
+      <div
+        className={`flex items-end justify-between font-bold text-white ${
+          isTv ? "text-xl" : compact ? "text-xs" : "text-sm"
+        }`}
+      >
         <span>{revealedBlanks} revealed</span>
-        <span className="text-white/60">{hiddenBlanks} hidden</span>
+        <span className={isTv ? "text-white/75" : "text-white/60"}>{hiddenBlanks} hidden</span>
       </div>
-      <div className={`overflow-hidden rounded-full bg-[#1a1612] ${compact ? "h-2" : "h-3"}`}>
+      <div
+        className={`overflow-hidden rounded-full bg-[#1a1612] ${
+          isTv ? "h-5" : compact ? "h-2" : "h-3"
+        }`}
+      >
         <div
           className="h-full rounded-full bg-gradient-to-r from-[#fde047] to-[#f59e0b] transition-all duration-300"
           style={{ width: `${progress}%` }}
         />
       </div>
-      <p className={`${compact ? "text-xs" : "text-sm"} font-medium text-white/70`}>
+      <p
+        className={`font-semibold text-white/80 ${
+          isTv ? "text-lg" : compact ? "text-xs" : "text-sm"
+        }`}
+      >
         {totalBlanks > 0 ? `${progress}% of words revealed` : "No blanks in this round"}
       </p>
     </div>

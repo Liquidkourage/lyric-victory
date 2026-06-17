@@ -1,14 +1,8 @@
 "use client";
 
-import { useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import {
-  DisplayPuzzleProgress,
-  PhaseBadge,
-  PhaseCountdown,
-  RoomCodeBadge,
-  ScaledLyricBoard,
-} from "@/components/game-ui";
+import { DisplayPuzzleProgress, PhaseCountdown, ScaledLyricBoard } from "@/components/game-ui";
 import { usePublicGame } from "@/hooks/useGameSocket";
 import { FREE_FOR_ALL_MS } from "@/lib/game-constants";
 import { groupWordGuessEntries } from "@/lib/guess-events";
@@ -24,9 +18,9 @@ function SidebarCard({
 }) {
   return (
     <section
-      className={`display-sidebar-panel flex min-h-0 flex-col overflow-hidden rounded-2xl p-3 ${className}`}
+      className={`display-sidebar-panel flex min-h-0 flex-col overflow-hidden rounded-2xl p-4 ${className}`}
     >
-      <h2 className="mb-2 shrink-0 text-sm font-bold uppercase tracking-wide text-[#fde047]">
+      <h2 className="mb-3 shrink-0 text-lg font-black uppercase tracking-wider text-[#fde047]">
         {title}
       </h2>
       <div className="min-h-0 flex-1 overflow-hidden text-[#f4ede3]">{children}</div>
@@ -34,13 +28,63 @@ function SidebarCard({
   );
 }
 
+function ConnectionDot({ connected }: { connected: boolean }) {
+  return (
+    <span
+      className={`inline-block h-4 w-4 shrink-0 rounded-full ring-2 ring-white/80 ${
+        connected ? "bg-[#16a34a]" : "bg-red-600"
+      }`}
+      title={connected ? "Live" : "Offline"}
+      aria-label={connected ? "Connected" : "Offline"}
+    />
+  );
+}
+
+function FullscreenControl() {
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    const sync = () => setExpanded(Boolean(document.fullscreenElement));
+    sync();
+    document.addEventListener("fullscreenchange", sync);
+    return () => document.removeEventListener("fullscreenchange", sync);
+  }, []);
+
+  const toggle = useCallback(async () => {
+    try {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen();
+        setExpanded(true);
+      } else {
+        await document.exitFullscreen();
+        setExpanded(false);
+      }
+    } catch {
+      // Browser may block without user gesture or on unsupported devices.
+    }
+  }, []);
+
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      className="rounded-xl bg-white/10 px-4 py-2 text-base font-bold uppercase tracking-wide text-white ring-1 ring-white/25 transition hover:bg-white/15"
+    >
+      {expanded ? "Exit fullscreen" : "Fullscreen"}
+    </button>
+  );
+}
+
 export default function DisplayPage() {
   const params = useParams<{ roomCode: string }>();
   const roomCode = params.roomCode.toUpperCase();
   const { state, connected, error } = usePublicGame(roomCode);
-  const recentWordGuesses = groupWordGuessEntries(state?.recentWordGuesses ?? []).slice(0, 5);
+  const recentWordGuesses = groupWordGuessEntries(state?.recentWordGuesses ?? []).slice(0, 4);
   const sortedPlayers = useMemo(
-    () => [...(state?.players ?? [])].sort((a, b) => b.score - a.score || a.displayName.localeCompare(b.displayName)),
+    () =>
+      [...(state?.players ?? [])].sort(
+        (a, b) => b.score - a.score || a.displayName.localeCompare(b.displayName),
+      ),
     [state?.players],
   );
 
@@ -48,56 +92,54 @@ export default function DisplayPage() {
     state?.announcement?.startsWith("Auto-reveal tuning")
       ? "Auto-reveal tuning"
       : state?.phase === "song-guess"
-      ? "Final title chance"
-      : state?.phase === "between-rounds"
-        ? "Open word rush"
-        : state?.phase === "word-guess"
-          ? "Guess words and title"
-          : "Song title hidden";
+        ? "Final title chance"
+        : state?.phase === "between-rounds"
+          ? "Open word rush"
+          : state?.phase === "word-guess"
+            ? "Guess words and title"
+            : "Song title hidden";
 
   const showWordRushTimer = state?.phase === "between-rounds" && state.phaseEndsAt !== null;
+  const acceptedSongGuess = state?.currentRound?.songGuesses.find((guess) => guess.accepted);
+  const latestWordGuess = recentWordGuesses[0];
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden text-[#f4ede3]">
-      <main className="relative flex h-full min-h-0 flex-col px-6 py-5">
-        <header className="mb-4 flex shrink-0 items-center justify-between gap-4 border-b border-white/10 pb-4">
-          <div className="flex min-w-0 items-baseline gap-5">
-            <p className="shrink-0 font-display text-sm font-bold uppercase tracking-[0.35em] text-[#fde047]">
-              Lyric Victory
-            </p>
-            <h1 className="truncate text-4xl font-black text-white">
-              {state && state.currentRoundIndex >= 0
-                ? `Round ${state.currentRoundIndex + 1}`
-                : "Waiting for host"}
-            </h1>
-            <p className="truncate text-xl font-medium text-white/75">{phaseLabel}</p>
+      <main className="relative flex h-full min-h-0 flex-col px-5 py-4">
+        <header className="mb-3 flex shrink-0 items-start justify-between gap-6 border-b border-white/10 pb-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1">
+              <h1 className="font-display text-5xl font-black leading-none text-white">
+                {state && state.currentRoundIndex >= 0
+                  ? `Round ${state.currentRoundIndex + 1}`
+                  : "Waiting for host"}
+              </h1>
+              <p className="text-2xl font-bold text-[#fde047]">{phaseLabel}</p>
+            </div>
+            {acceptedSongGuess ? (
+              <p className="mt-2 text-3xl font-black text-white">
+                {acceptedSongGuess.title}
+                <span className="ml-3 font-semibold text-white/65">— solved!</span>
+              </p>
+            ) : null}
           </div>
 
-          <div className="flex shrink-0 items-center gap-3">
-            <RoomCodeBadge code={roomCode} compact />
-            {state ? <PhaseBadge phase={state.phase} /> : null}
-            <span
-              className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide ${
-                connected
-                  ? "bg-[#16a34a] text-white ring-2 ring-white/80"
-                  : "bg-red-700 text-white ring-2 ring-white/50"
-              }`}
-            >
-              {connected ? "Live" : "Offline"}
-            </span>
+          <div className="flex shrink-0 items-center gap-4">
+            <ConnectionDot connected={connected} />
+            <FullscreenControl />
           </div>
         </header>
 
         {error ? (
-          <div className="mb-4 shrink-0 rounded-2xl bg-red-900 px-5 py-3 text-base font-semibold text-white ring-2 ring-white/40">
+          <div className="mb-3 shrink-0 rounded-2xl bg-red-900 px-5 py-4 text-xl font-bold text-white ring-2 ring-white/40">
             {error}
           </div>
         ) : null}
 
-        <section className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_240px] gap-5">
+        <section className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_380px] gap-4">
           <div className="tv-board-panel flex min-h-0 flex-col overflow-hidden rounded-2xl p-4">
             {state?.announcement ? (
-              <div className="display-announcement mb-3 shrink-0 rounded-xl px-6 py-3 text-center text-2xl font-black tracking-wide text-[#1a1612]">
+              <div className="display-announcement mb-3 shrink-0 rounded-xl px-6 py-4 text-center text-3xl font-black leading-tight tracking-wide text-[#1a1612]">
                 {state.announcement}
               </div>
             ) : null}
@@ -105,13 +147,13 @@ export default function DisplayPage() {
             {state?.currentRound ? (
               <ScaledLyricBoard lines={state.currentRound.lines} />
             ) : (
-              <div className="flex flex-1 items-center justify-center font-display text-4xl font-semibold text-white/50">
+              <div className="flex flex-1 items-center justify-center font-display text-5xl font-semibold text-white/50">
                 Puzzle board appears when a round starts
               </div>
             )}
           </div>
 
-          <aside className="grid min-h-0 grid-rows-4 gap-3">
+          <aside className="grid min-h-0 grid-rows-[auto_1fr_auto] gap-3">
             <SidebarCard title={showWordRushTimer ? "Word Rush" : "Puzzle"}>
               {showWordRushTimer ? (
                 <PhaseCountdown
@@ -119,91 +161,122 @@ export default function DisplayPage() {
                   active
                   endsAt={state.phaseEndsAt}
                   durationMs={FREE_FOR_ALL_MS}
-                  compact
+                  variant="tv"
                 />
               ) : state?.currentRound ? (
-                <DisplayPuzzleProgress lines={state.currentRound.lines} compact />
+                <DisplayPuzzleProgress lines={state.currentRound.lines} variant="tv" />
               ) : (
-                <p className="text-sm text-white/60">Waiting for round…</p>
+                <p className="text-lg text-white/60">Waiting for round…</p>
               )}
-              <p className="mt-2 text-sm font-medium text-white/70">
-                Round {Math.max(0, (state?.currentRoundIndex ?? -1) + 1)} of {state?.totalRounds ?? 0}
+              <p className="mt-3 text-lg font-bold text-white/75">
+                Round {Math.max(0, (state?.currentRoundIndex ?? -1) + 1)} of{" "}
+                {state?.totalRounds ?? 0}
               </p>
             </SidebarCard>
 
             <SidebarCard title="Leaderboard">
-              <div className="space-y-2 overflow-hidden">
-                {sortedPlayers.map((player, index) => (
+              <div className="space-y-2">
+                {sortedPlayers.slice(0, 8).map((player, index) => (
                   <div
                     key={player.id}
-                    className={`flex items-center justify-between rounded-lg px-3 py-2 text-sm ring-1 ${
+                    className={`flex items-center justify-between gap-3 rounded-xl px-4 py-2.5 ring-2 ${
                       player.connected
-                        ? "bg-black/35 text-white ring-white/15"
+                        ? "bg-black/35 text-white ring-white/20"
                         : "bg-black/20 text-white/50 ring-white/10"
                     }`}
                   >
-                    <span className="truncate font-bold">
+                    <span className="min-w-0 flex-1 text-xl font-bold leading-tight">
                       {index + 1}. {player.displayName}
                     </span>
-                    <span className="ml-2 shrink-0 font-black text-[#fde047]">{player.score}</span>
+                    <span className="shrink-0 font-display text-2xl font-black text-[#fde047]">
+                      {player.score}
+                    </span>
                   </div>
                 ))}
                 {sortedPlayers.length === 0 ? (
-                  <p className="text-sm text-white/60">Waiting for players…</p>
+                  <p className="text-lg text-white/60">Waiting for players…</p>
                 ) : null}
               </div>
             </SidebarCard>
 
-            <SidebarCard title="Recent Guesses">
-              <div className="space-y-2 overflow-hidden">
-                {recentWordGuesses.map((guess, index) => (
-                  <div
-                    key={`${guess.playerId}-${index}`}
-                    className="truncate rounded-lg bg-black/35 px-3 py-2 text-sm ring-1 ring-white/15"
+            <SidebarCard title="Live Feed">
+              {latestWordGuess ? (
+                <div
+                  className={`mb-3 rounded-xl px-4 py-3 ring-2 ${
+                    latestWordGuess.accepted
+                      ? "bg-[#fde047]/15 ring-[#fde047]/50"
+                      : "bg-black/35 ring-white/15"
+                  }`}
+                >
+                  <p className="text-base font-bold uppercase tracking-wide text-white/60">Latest word</p>
+                  <p className="mt-1 text-xl font-bold text-white">{latestWordGuess.playerName}</p>
+                  <p
+                    className={`mt-1 break-words text-3xl font-black uppercase leading-tight ${
+                      latestWordGuess.accepted ? "text-[#fde047]" : "text-white/40 line-through"
+                    }`}
                   >
-                    <span className="font-bold text-white">{guess.playerName}</span>
-                    <span className="text-white/50"> {"->"} </span>
-                    <span className={`font-black uppercase ${guess.accepted ? "text-[#fde047]" : "text-white/45"}`}>
-                      {guess.word}
-                    </span>
-                    {guess.count > 1 ? (
-                      <span className="ml-2 rounded-full bg-white/15 px-2 py-0.5 text-xs font-black text-white">
-                        {guess.count}
+                    {latestWordGuess.word}
+                    {latestWordGuess.totalPoints ? (
+                      <span className="ml-2 text-xl font-bold text-white/70">
+                        +{latestWordGuess.totalPoints}
                       </span>
                     ) : null}
-                    {guess.totalPoints ? <span className="text-white/60"> +{guess.totalPoints}</span> : null}
+                  </p>
+                </div>
+              ) : null}
+
+              <div className="space-y-2">
+                {recentWordGuesses.slice(latestWordGuess ? 1 : 0).map((guess, index) => (
+                  <div
+                    key={`${guess.playerId}-${index}`}
+                    className="rounded-lg bg-black/30 px-3 py-2 text-lg ring-1 ring-white/10"
+                  >
+                    <span className="font-bold text-white">{guess.playerName}</span>
+                    <span className="text-white/45"> → </span>
+                    <span
+                      className={`font-black uppercase ${
+                        guess.accepted ? "text-[#fde047]" : "text-white/40"
+                      }`}
+                    >
+                      {guess.word}
+                    </span>
+                    {guess.totalPoints ? (
+                      <span className="text-white/60"> +{guess.totalPoints}</span>
+                    ) : null}
                   </div>
                 ))}
-                {recentWordGuesses.length === 0 ? (
-                  <p className="text-sm text-white/60">Word guesses appear live.</p>
-                ) : null}
-              </div>
-            </SidebarCard>
 
-            <SidebarCard title="Song Guesses">
-              <div className="space-y-2 overflow-hidden">
-                {(state?.currentRound?.songGuesses ?? []).slice(0, 5).map((guess) => (
+                {(state?.currentRound?.songGuesses ?? []).slice(0, 3).map((guess) => (
                   <div
                     key={`${guess.playerId}-${guess.submittedAt}`}
-                    className={`truncate rounded-lg px-3 py-2 text-sm ring-1 ${
+                    className={`rounded-lg px-3 py-2 text-lg ring-2 ${
                       guess.accepted
                         ? "bg-[#16a34a]/30 font-semibold text-white ring-[#16a34a]"
-                        : "bg-black/35 text-white/80 ring-white/15"
+                        : "bg-black/30 text-white/80 ring-white/10"
                     }`}
                   >
                     <span className="font-bold">{guess.playerName}</span>
                     <span className="text-white/45"> · </span>
-                    <span>{guess.title}</span>
+                    <span className="break-words">{guess.title}</span>
                     {guess.points ? <span className="text-white/60"> +{guess.points}</span> : null}
                   </div>
                 ))}
-                {(state?.currentRound?.songGuesses.length ?? 0) === 0 ? (
-                  <p className="text-sm text-white/60">Song guesses appear live.</p>
+
+                {recentWordGuesses.length === 0 &&
+                (state?.currentRound?.songGuesses.length ?? 0) === 0 ? (
+                  <p className="text-lg text-white/60">Guesses appear live here.</p>
                 ) : null}
               </div>
             </SidebarCard>
           </aside>
         </section>
+
+        <p
+          className="pointer-events-none absolute bottom-3 left-5 font-mono text-lg font-bold tracking-[0.2em] text-white/35"
+          aria-hidden
+        >
+          {roomCode}
+        </p>
       </main>
     </div>
   );
