@@ -21,7 +21,8 @@ The TV display is a **read-only fullscreen kiosk**. It never hosts controls, for
 - **Every line visible at once** — no pagination; scale to fit the full song
 - **Multi-column layout** — distribute lines across the full board width (newspaper columns)
 - **One lyric line per row** within each column
-- **Hidden blanks**: high-contrast cream chip + bold black letter count
+- **Hidden blanks**: warm amber chip + gold letter count
+- **Column dividers**: visible gold vertical rule between columns
 - **Pre-revealed**: inline white text (saves horizontal space)
 - **Player-revealed**: gold chip + pop animation
 - Tighten row gaps automatically on long songs

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, Fragment } from "react";
 import { flushSync } from "react-dom";
 import { getBlankProgress } from "@/lib/round-progress";
 import {
@@ -31,7 +31,8 @@ const TV = {
   markGapRem: 0.5,
   segmentGapRem: 0.85,
   rowGapRem: 1.2,
-  columnGapRem: 1.25,
+  columnGapRem: 0.35,
+  columnDividerRem: 1.4,
   edgePaddingRem: 0.75,
   absMinScale: 0.14,
   maxScale: 1.25,
@@ -400,7 +401,6 @@ function measureScaleForColumns(
   containerWidth: number,
   containerHeight: number,
   rowGapRem: number,
-  columnGapRem: number,
   columnCount: number,
 ): { scale: number; fits: boolean } {
   const rootRem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
@@ -418,7 +418,7 @@ function measureScaleForColumns(
     const tileHeightPx = TV.tileHeightRem * scale * rootRem;
     const horizontalChrome =
       TV.edgePaddingRem * scale * rootRem * 2 +
-      Math.max(0, columnCount - 1) * columnGapRem * scale * rootRem;
+      Math.max(0, columnCount - 1) * TV.columnDividerRem * scale * rootRem;
 
     if (containerWidth <= horizontalChrome) return false;
     if (tileHeightPx > rowBandHeight * TV.verticalFitRatio) return false;
@@ -597,7 +597,7 @@ function BlankTile({
       style={style}
       className={
         size === "tv"
-          ? `inline-flex items-center justify-center rounded-md border-2 border-[#1a1612] bg-[#f5f0e6] font-black tabular-nums text-[#0a0907] ${className}`
+          ? `tv-hidden-blank inline-flex items-center justify-center rounded-lg border-2 border-[#d4a853]/80 font-black tabular-nums text-[#fde047] ${className}`
           : `inline-flex items-center justify-center rounded-md bg-surface-muted font-bold tabular-nums text-ink-bright ring-2 ring-ink/30 ${className}`
       }
       aria-label={`${token.length} letter blank`}
@@ -712,7 +712,6 @@ export function ScaledLyricBoard({ lines }: { lines: PublicLine[] }) {
           containerWidth,
           containerHeight,
           rowGapRem,
-          TV.columnGapRem,
           columns.length,
         );
 
@@ -738,7 +737,6 @@ export function ScaledLyricBoard({ lines }: { lines: PublicLine[] }) {
     return () => observer.disconnect();
   }, [lines]);
 
-  const columnGap = `calc(${TV.columnGapRem}rem * var(--tv-scale, 1))`;
   const edgePadding = getTvEdgePadding();
 
   return (
@@ -750,14 +748,16 @@ export function ScaledLyricBoard({ lines }: { lines: PublicLine[] }) {
           {
             "--tv-scale": layout.scale,
             "--tv-row-gap": `${layout.rowGapRem}rem`,
-            gap: columnGap,
             paddingLeft: edgePadding,
             paddingRight: edgePadding,
           } as React.CSSProperties
         }
       >
         {layout.columns.map((columnLines, columnIndex) => (
-          <TvLyricColumn key={columnIndex} lines={columnLines} />
+          <Fragment key={columnIndex}>
+            {columnIndex > 0 ? <div className="tv-board-column-divider" aria-hidden /> : null}
+            <TvLyricColumn lines={columnLines} />
+          </Fragment>
         ))}
       </div>
     </div>
