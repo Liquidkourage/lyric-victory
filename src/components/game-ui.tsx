@@ -281,10 +281,10 @@ function TvRevealedWord({ value }: { value: string }) {
     <span
       key={value}
       style={style}
-      className="tv-revealed-word inline-flex shrink-0 items-center justify-center self-center rounded-lg border-[3px] border-[#1a1612] bg-[#fde047] px-[calc(0.75rem*var(--tv-scale,1))] font-black uppercase leading-none tracking-wide text-[#0a0907]"
+      className="tv-revealed-word inline-flex shrink-0 items-center justify-center self-center rounded-lg border-[3px] border-[#1a1612] bg-[#fde047] px-[calc(0.75rem*var(--tv-scale,1))] font-black leading-none tracking-wide text-[#0a0907]"
       aria-label="Revealed word"
     >
-      {value.toUpperCase()}
+      {value}
     </span>
   );
 }
@@ -585,7 +585,7 @@ function BlankTile({
     return (
       <span
         style={style}
-        className={`inline-flex items-center justify-center rounded-md bg-surface-muted font-semibold uppercase tracking-wide text-success ring-0 ${className}`}
+        className={`inline-flex items-center justify-center rounded-md bg-surface-muted font-semibold tracking-wide text-success ring-0 ${className}`}
       >
         {token.answer}
       </span>

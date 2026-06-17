@@ -7,6 +7,10 @@ export function extractWordLetters(word: string): string {
   return word.replace(NON_LETTERS, "").toLowerCase();
 }
 
+function extractWordLettersPreserveCase(word: string): string {
+  return word.replace(NON_LETTERS, "");
+}
+
 export function leadingPunctuation(word: string): string {
   return word.match(/^[^a-zA-Z]+/)?.[0] ?? "";
 }
@@ -24,7 +28,7 @@ function appendHiddenWord(
   answers: string[],
   word: string,
 ) {
-  const letters = extractWordLetters(word);
+  const letters = extractWordLettersPreserveCase(word);
   const leading = leadingPunctuation(word);
   const trailing = trailingPunctuation(word);
 
@@ -86,7 +90,7 @@ function appendText(segment: string, tokens: LyricToken[], lines: LyricToken[][]
 }
 
 export function attachAnswers(parsed: ParsedLyric, answers: string[]): ParsedLyric {
-  const normalizedAnswers = answers.map((answer) => answer.trim().toLowerCase());
+  const normalizedAnswers = answers.map((answer) => answer.trim());
   if (normalizedAnswers.length !== parsed.answers.length) {
     throw new Error("Answer count does not match blank count.");
   }
