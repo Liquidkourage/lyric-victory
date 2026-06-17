@@ -25,10 +25,10 @@ const TV = {
   segmentGapRem: 0.85,
   rowGapRem: 1.1,
   edgePaddingRem: 1.15,
-  minScale: 0.52,
-  absMinScale: 0.22,
+  minScale: 0.45,
+  absMinScale: 0.28,
   maxScale: 1.2,
-  verticalFitRatio: 0.96,
+  verticalFitRatio: 0.9,
 };
 
 function getSingleTileWidthRem(): number {
@@ -108,8 +108,10 @@ function normalizeRowSegments(segments: DisplayRowSegment[]): DisplayRowSegment[
 function getMaxLinesPerRowCandidates(lineCount: number): number[] {
   if (lineCount <= 4) return [1];
   if (lineCount <= 8) return [2, 1];
-  if (lineCount <= 16) return [4, 3, 2, 1];
-  return [8, 7, 6, 5, 4, 3, 2, 1];
+  if (lineCount <= 16) return [2, 1, 3];
+  if (lineCount <= 28) return [2, 1, 3, 4];
+  // Long songs: packing many lines per row forces unreadable horizontal scale-down.
+  return [2, 1, 3, 4, 5];
 }
 
 /** Pack lyric lines into display rows, never exceeding maxLinesPerRow lyric lines per row. */
@@ -381,7 +383,7 @@ function rowsFitWidth(content: HTMLDivElement, availableWidth: number): boolean 
 
 function measureScaleForRows(
   content: HTMLDivElement,
-  rows: DisplayRow[],
+  rowCount: number,
   containerWidth: number,
   containerHeight: number,
 ): { scale: number; fits: boolean } {
@@ -389,9 +391,14 @@ function measureScaleForRows(
 
   const fitsAtScale = (scale: number) => {
     content.style.setProperty("--tv-scale", String(scale));
+
+    const rowGapTotalPx = Math.max(0, rowCount - 1) * TV.rowGapRem * scale * rootRem;
+    const rowBandHeight = (containerHeight - rowGapTotalPx) / Math.max(rowCount, 1);
+    const tileHeightPx = TV.tileHeightRem * scale * rootRem;
     const availableWidth = containerWidth - TV.edgePaddingRem * scale * rootRem * 2;
-    if (!rowsFitWidth(content, availableWidth)) return false;
-    return content.scrollHeight <= containerHeight * TV.verticalFitRatio;
+
+    if (tileHeightPx > rowBandHeight * TV.verticalFitRatio) return false;
+    return rowsFitWidth(content, availableWidth);
   };
 
   let lo = TV.absMinScale;
@@ -419,7 +426,7 @@ function TvLyricRow({ row }: { row: DisplayRow }) {
   return (
     <div
       data-tv-row
-      className="flex w-full shrink-0 items-center justify-center py-[calc(0.1rem*var(--tv-scale,1))]"
+      className="flex min-h-0 w-full flex-1 items-center justify-center py-[calc(0.12rem*var(--tv-scale,1))]"
     >
       <div
         data-tv-row-inner
@@ -631,11 +638,9 @@ export function ScaledLyricBoard({ lines }: { lines: PublicLine[] }) {
       if (containerWidth <= 0 || containerHeight <= 0) return;
 
       let bestLayout = {
-        rows: packLinesBalanced(lines, 4),
+        rows: packLinesBalanced(lines, 2),
         scale: TV.absMinScale,
         fits: false,
-        rowCount: Number.POSITIVE_INFINITY,
-        overflow: Number.POSITIVE_INFINITY,
       };
 
       for (const maxLinesPerRow of getMaxLinesPerRowCandidates(lines.length)) {
@@ -647,28 +652,25 @@ export function ScaledLyricBoard({ lines }: { lines: PublicLine[] }) {
 
         const { scale, fits } = measureScaleForRows(
           content,
-          rows,
+          rows.length,
           containerWidth,
           containerHeight,
         );
-        const overflow = Math.max(0, content.scrollHeight - containerHeight * TV.verticalFitRatio);
 
-        if (fits) {
-          if (
-            rows.length < bestLayout.rowCount ||
-            (rows.length === bestLayout.rowCount && scale > bestLayout.scale)
-          ) {
-            bestLayout = { rows, scale, fits: true, rowCount: rows.length, overflow: 0 };
-          }
-          continue;
-        }
+        if (!fits) continue;
 
-        if (
-          !bestLayout.fits &&
-          (overflow < bestLayout.overflow || (overflow === bestLayout.overflow && scale < bestLayout.scale))
-        ) {
-          bestLayout = { rows, scale, fits: false, rowCount: rows.length, overflow };
+        if (scale > bestLayout.scale || (scale === bestLayout.scale && rows.length < bestLayout.rows.length)) {
+          bestLayout = { rows, scale, fits: true };
         }
+      }
+
+      if (!bestLayout.fits) {
+        const rows = packLinesGreedy(lines, 1);
+        flushSync(() => {
+          setLayout({ rows, scale: 1 });
+        });
+        const { scale } = measureScaleForRows(content, rows.length, containerWidth, containerHeight);
+        bestLayout = { rows, scale, fits: false };
       }
 
       flushSync(() => {
@@ -693,7 +695,7 @@ export function ScaledLyricBoard({ lines }: { lines: PublicLine[] }) {
     <div ref={containerRef} className="min-h-0 w-full flex-1 overflow-hidden">
       <div
         ref={contentRef}
-        className="flex h-full w-full flex-col items-center justify-center overflow-hidden"
+        className="flex h-full w-full flex-col items-center overflow-hidden"
         style={
           {
             "--tv-scale": layout.scale,
