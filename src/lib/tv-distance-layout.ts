@@ -126,8 +126,11 @@ export interface DistanceLayoutParams {
   wordGap: number;
   rowGap: number;
   columnGap: number;
-  chipHeight: number;
-  chipFontSize: number;
+}
+
+/** Width in em units for a hidden blank, matched to revealed-word typography. */
+export function blankWidthEm(charCount: number): number {
+  return Math.max(1.6, charCount * 0.56);
 }
 
 export const DISTANCE_FONT_MAX = 56;
@@ -150,8 +153,6 @@ export function gapsForRevealedFontSize(revealedFontSize: number, dense = false)
     wordGap: Math.min(12, Math.max(4, revealedFontSize * 0.18 * scale)),
     rowGap: Math.min(14, Math.max(4, revealedFontSize * 0.2 * scale)),
     columnGap: Math.min(28, Math.max(10, revealedFontSize * 0.35 * scale)),
-    chipHeight: revealedFontSize * 1.05,
-    chipFontSize: revealedFontSize * 0.72,
   };
 }
 

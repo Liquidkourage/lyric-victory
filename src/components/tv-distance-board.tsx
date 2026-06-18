@@ -16,13 +16,17 @@ import {
 } from "@/lib/tv-distance-layout";
 import type { PublicLine, PublicToken } from "@/lib/types";
 
-function DistanceHiddenChip({ length, dense }: { length: number; dense: boolean }) {
+function DistanceHiddenBlank({ length }: { length: number }) {
   return (
     <span
-      className={`tv-distance-hidden${dense ? " tv-distance-hidden--dense" : ""}`}
+      className="tv-distance-blank"
+      style={{ "--tvd-blank-ch": length } as React.CSSProperties}
       aria-label={`${length} letter blank`}
     >
-      {length}
+      <span className="tv-distance-blank-track" aria-hidden />
+      <span className="tv-distance-blank-count" aria-hidden>
+        {length}
+      </span>
     </span>
   );
 }
@@ -77,7 +81,7 @@ function renderFlowToken(token: PublicToken, key: string, dense: boolean) {
         />
       );
     }
-    return <DistanceHiddenChip key={key} length={token.length} dense={dense} />;
+    return <DistanceHiddenBlank key={key} length={token.length} />;
   }
 
   if (isPunctuationToken(token)) {
@@ -98,8 +102,6 @@ function applyLayoutStyles(
   viewportWidth: number,
 ) {
   flow.style.setProperty("--tvd-font", `${params.revealedFontSize}px`);
-  flow.style.setProperty("--tvd-chip-font", `${params.chipFontSize}px`);
-  flow.style.setProperty("--tvd-chip-height", `${params.chipHeight}px`);
   flow.style.setProperty("--tvd-word-gap", `${params.wordGap}px`);
   flow.style.setProperty("--tvd-row-gap", `${params.rowGap}px`);
   flow.style.setProperty("--tvd-column-gap", `${params.columnGap}px`);
@@ -119,6 +121,7 @@ function measureLaneTokenCounts(flow: HTMLElement) {
     let units = 0;
     for (const child of lane.children) {
       if (child.classList.contains("tv-distance-punct")) continue;
+      if (child.classList.contains("tv-distance-blank-count")) continue;
       units += 1;
     }
     if (units > 0) counts.push(units);
@@ -270,8 +273,6 @@ export function DistanceLyricBoard({
         style={
           {
             "--tvd-font": `${layout.revealedFontSize}px`,
-            "--tvd-chip-font": `${layout.chipFontSize}px`,
-            "--tvd-chip-height": `${layout.chipHeight}px`,
             "--tvd-word-gap": `${layout.wordGap}px`,
             "--tvd-row-gap": `${layout.rowGap}px`,
             "--tvd-column-gap": `${layout.columnGap}px`,
