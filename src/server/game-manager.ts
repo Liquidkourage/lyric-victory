@@ -82,8 +82,29 @@ export class GameManager {
   }
 
   registerHandlers(socket: Socket) {
-    socket.on("host:create-room", (callback) => {
-      const code = this.createUniqueCode();
+    socket.on("host:create-room", (payload, callback) => {
+      if (typeof payload === "function") {
+        callback = payload;
+        payload = {};
+      }
+
+      const requestedCode = payload?.requestedCode
+        ? normalizeRoomCode(String(payload.requestedCode))
+        : "";
+
+      if (requestedCode && requestedCode.length < 4) {
+        callback({ error: "Room code must be at least 4 characters." });
+        return;
+      }
+
+      if (requestedCode && this.rooms.has(requestedCode)) {
+        callback({
+          error: `Room ${requestedCode} is already active. Pick another code or close that room from /host.`,
+        });
+        return;
+      }
+
+      const code = requestedCode || this.createUniqueCode();
       const hostToken = uuidv4();
       const room: InternalRoom = {
         code,

@@ -6,10 +6,12 @@ import {
   BRING_ME_TO_LIFE_GUESSES,
 } from "./bring-me-to-life-lyrics";
 import { plainLyricsToTemplate } from "../../src/lib/lyrics";
+import { normalizeRoomCode } from "../../src/lib/room-code";
 import { getBlankProgress } from "../../src/lib/round-progress";
 import type { PublicGameState } from "../../src/lib/types";
 
 const LOCAL_PORT = Number(process.env.PORT ?? 3000);
+const DEFAULT_PRESET_WAIT_MS = 10_000;
 
 const PLAYERS = ["Alex", "Jordan", "Sam"] as const;
 
@@ -78,9 +80,47 @@ function readCliUrl(): string | null {
   return null;
 }
 
-function resolveBaseUrl(requireRemote: boolean): string {
-  loadPlaytestEnvFile();
+function readRequestedRoomCode(): string | null {
+  const args = process.argv.slice(2).filter((arg) => arg !== "--");
 
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if ((arg === "--code" || arg === "-c") && args[index + 1]) {
+      return normalizeRoomCode(args[index + 1]);
+    }
+    if (arg.startsWith("--code=")) {
+      return normalizeRoomCode(arg.slice("--code=".length));
+    }
+  }
+
+  if (process.env.PLAYTEST_CODE) {
+    return normalizeRoomCode(process.env.PLAYTEST_CODE);
+  }
+
+  return null;
+}
+
+function readPresetWaitMs(hasPresetCode: boolean): number {
+  const args = process.argv.slice(2).filter((arg) => arg !== "--");
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if ((arg === "--wait" || arg === "-w") && args[index + 1]) {
+      return Math.max(0, Number(args[index + 1]) * 1000);
+    }
+    if (arg.startsWith("--wait=")) {
+      return Math.max(0, Number(arg.slice("--wait=".length)) * 1000);
+    }
+  }
+
+  if (process.env.PLAYTEST_WAIT_MS) {
+    return Math.max(0, Number(process.env.PLAYTEST_WAIT_MS));
+  }
+
+  return hasPresetCode ? DEFAULT_PRESET_WAIT_MS : 0;
+}
+
+function resolveBaseUrl(requireRemote: boolean): string {
   const cliUrl = readCliUrl();
   if (cliUrl) return normalizeBaseUrl(cliUrl);
 
@@ -113,10 +153,17 @@ Usage:
   npm run playtest:remote -- --url https://your-app.up.railway.app
 
 Options:
-  --url, -u   Target server (local dev or Railway public URL)
-  <url>       Bare URL also works (Windows/npm often drops --url)
-  --remote    Require a remote URL (via flag, PLAYTEST_URL, or .env.playtest)
-  --help, -h  Show this help
+  --url, -u     Target server (local dev or Railway public URL)
+  --code, -c    Preset room code (open /display/CODE before the round starts)
+  --wait, -w    Seconds to wait after printing the display URL (default 10 with --code)
+  <url>         Bare URL also works (Windows/npm often drops --url)
+  --remote      Require a remote URL (via flag, PLAYTEST_URL, or .env.playtest)
+  --help, -h    Show this help
+
+Preset display example:
+  npm run playtest:remote -- https://your-app.up.railway.app --code TVTEST --wait 15
+
+Or save PLAYTEST_CODE and PLAYTEST_WAIT_MS in .env.playtest.
 
 The script creates a room, joins three fake players, runs a scripted round,
 and prints the display URL to open on a TV or browser.
@@ -149,6 +196,27 @@ function log(section: string, message: string) {
 function emit<T>(socket: Socket, event: string, payload: Record<string, unknown> = {}): Promise<T> {
   return new Promise((resolve) => {
     socket.emit(event, payload, (response: T) => resolve(response));
+  });
+}
+
+function createHostRoom(
+  socket: Socket,
+  requestedCode: string | null,
+): Promise<{ code: string; hostToken: string }> {
+  return new Promise((resolve, reject) => {
+    const onResponse = (response: { code?: string; hostToken?: string; error?: string }) => {
+      if (!response?.code || !response?.hostToken) {
+        reject(new Error(response?.error ?? "Failed to create room."));
+        return;
+      }
+      resolve({ code: response.code, hostToken: response.hostToken });
+    };
+
+    if (requestedCode) {
+      socket.emit("host:create-room", { requestedCode }, onResponse);
+    } else {
+      socket.emit("host:create-room", onResponse);
+    }
   });
 }
 
@@ -240,23 +308,36 @@ async function main() {
   }
 
   const requireRemote = args.includes("--remote");
+  loadPlaytestEnvFile();
+  const requestedCode = readRequestedRoomCode();
+  const presetWaitMs = readPresetWaitMs(Boolean(requestedCode));
   const baseUrl = resolveBaseUrl(requireRemote);
 
   log("TARGET", baseUrl);
+
+  if (requestedCode) {
+    log("DISPLAY", `Preset room ${requestedCode}`);
+    log("DISPLAY", `${baseUrl}/display/${requestedCode}`);
+  }
+
   await assertServerReachable(baseUrl);
   log("TARGET", "Health check ok");
 
   const hostSocket = await connectSocket(baseUrl);
   const displaySocket = await connectSocket(baseUrl);
 
-  log("SETUP", "Creating room…");
-  const { code, hostToken } = await new Promise<{ code: string; hostToken: string }>((resolve) => {
-    hostSocket.emit("host:create-room", (response: { code: string; hostToken: string }) => resolve(response));
-  });
+  log("SETUP", requestedCode ? `Creating room ${requestedCode}…` : "Creating room…");
+  const { code, hostToken } = await createHostRoom(hostSocket, requestedCode);
 
   const displayUrl = `${baseUrl}/display/${code}`;
   log("SETUP", `Room ${code} ready`);
-  log("DISPLAY", `Open ${displayUrl}`);
+
+  if (presetWaitMs > 0) {
+    log("SETUP", `Waiting ${Math.round(presetWaitMs / 1000)}s — open the display now`);
+    await sleep(presetWaitMs);
+  } else if (!requestedCode) {
+    log("DISPLAY", `Open ${displayUrl}`);
+  }
 
   const displayState = attachStateTracker(displaySocket);
   const joinedDisplay = await emit<{ ok: boolean; error?: string }>(displaySocket, "display:join", { code });
