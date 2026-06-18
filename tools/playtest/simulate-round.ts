@@ -219,6 +219,8 @@ Preset display example:
   npm run playtest:remote -- https://your-app.up.railway.app --wait=15 --code=TVTEST
 
 Or save PLAYTEST_CODE and PLAYTEST_WAIT_MS in .env.playtest.
+If a preset room is still active, set PLAYTEST_TAKEOVER_SECRET in .env.playtest
+and on the server (same value) — playtest will replace the old room automatically.
 
 The script creates a room, joins three fake players, runs a scripted round,
 and prints the display URL to open on a TV or browser.
@@ -268,6 +270,11 @@ function emit<T>(socket: Socket, event: string, payload: Record<string, unknown>
   });
 }
 
+function readTakeoverSecret(): string | null {
+  const value = process.env.PLAYTEST_TAKEOVER_SECRET?.trim();
+  return value || null;
+}
+
 function createHostRoom(
   socket: Socket,
   requestedCode: string | null,
@@ -281,8 +288,16 @@ function createHostRoom(
       resolve({ code: response.code, hostToken: response.hostToken });
     };
 
-    if (requestedCode) {
-      socket.emit("host:create-room", { requestedCode }, onResponse);
+    const takeoverSecret = requestedCode ? readTakeoverSecret() : null;
+    const payload = requestedCode
+      ? {
+          requestedCode,
+          ...(takeoverSecret ? { takeoverSecret } : {}),
+        }
+      : undefined;
+
+    if (payload) {
+      socket.emit("host:create-room", payload, onResponse);
     } else {
       socket.emit("host:create-room", onResponse);
     }
@@ -399,7 +414,22 @@ async function main() {
   const displaySocket = await connectSocket(baseUrl);
 
   log("SETUP", requestedCode ? `Creating room ${requestedCode}…` : "Creating room…");
-  const { code, hostToken } = await createHostRoom(hostSocket, requestedCode);
+  if (requestedCode && readTakeoverSecret()) {
+    log("SETUP", "Takeover enabled — will replace an active preset room");
+  }
+  let code: string;
+  let hostToken: string;
+  try {
+    ({ code, hostToken } = await createHostRoom(hostSocket, requestedCode));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to create room.";
+    if (requestedCode && message.includes("already active") && !readTakeoverSecret()) {
+      throw new Error(
+        `${message}\n\nAdd PLAYTEST_TAKEOVER_SECRET to .env.playtest and the server env (same value), then rerun.`,
+      );
+    }
+    throw error;
+  }
 
   const displayUrl = `${baseUrl}/display/${code}`;
   log("SETUP", `Room ${code} ready`);

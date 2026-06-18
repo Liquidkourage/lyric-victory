@@ -5,33 +5,33 @@ Where I've become so numb
 Without a soul
 My spirit's sleeping somewhere cold
 Until you find it there and lead it back home
-Wake me up
+(Wake me up)
 Wake me up inside
-I can't wake up
+(I can't wake up)
 Wake me up inside
-Save me
+(Save me)
 Call my name and save me from the dark
-Wake me up
+(Wake me up)
 Bid my blood to run
-I can't wake up
+(I can't wake up)
 Before I come undone
-Save me
+(Save me)
 Save me from the nothing I've become
 Now that I know what I'm without
 You can't just leave me
 Breathe into me and make me real
 Bring me to life
-Wake me up
+(Wake me up)
 Wake me up inside
-I can't wake up
+(I can't wake up)
 Wake me up inside
-Save me
+(Save me)
 Call my name and save me from the dark
-Wake me up
+(Wake me up)
 Bid my blood to run
-I can't wake up
+(I can't wake up)
 Before I come undone
-Save me
+(Save me)
 Save me from the nothing I've become
 Bring me to life
 I've been living a lie
@@ -48,17 +48,17 @@ Without a thought without a voice without a soul
 Don't let me die here
 There must be something more
 Bring me to life
-Wake me up
+(Wake me up)
 Wake me up inside
-I can't wake up
+(I can't wake up)
 Wake me up inside
-Save me
+(Save me)
 Call my name and save me from the dark
-Wake me up
+(Wake me up)
 Bid my blood to run
-I can't wake up
+(I can't wake up)
 Before I come undone
-Save me
+(Save me)
 Save me from the nothing I've become
 Bring me to life
 I've been living a lie

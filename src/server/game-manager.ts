@@ -98,10 +98,15 @@ export class GameManager {
       }
 
       if (requestedCode && this.rooms.has(requestedCode)) {
-        callback({
-          error: `Room ${requestedCode} is already active. Pick another code or close that room from /host.`,
-        });
-        return;
+        const takeoverSecret =
+          typeof payload?.takeoverSecret === "string" ? payload.takeoverSecret.trim() : "";
+        if (!this.canTakeoverPresetRoom(takeoverSecret)) {
+          callback({
+            error: `Room ${requestedCode} is already active. Pick another code, close that room from /host, or rerun playtest with PLAYTEST_TAKEOVER_SECRET set on server and client.`,
+          });
+          return;
+        }
+        this.evictRoom(requestedCode);
       }
 
       const code = requestedCode || this.createUniqueCode();
@@ -674,6 +679,19 @@ export class GameManager {
       clearTimeout(room.roundTimer);
       room.roundTimer = null;
     }
+  }
+
+  private canTakeoverPresetRoom(takeoverSecret: string): boolean {
+    const expected = process.env.PLAYTEST_TAKEOVER_SECRET?.trim();
+    return Boolean(expected && takeoverSecret && takeoverSecret === expected);
+  }
+
+  private evictRoom(code: string) {
+    const room = this.rooms.get(code);
+    if (!room) return;
+    this.clearRoundTimer(room);
+    this.rooms.delete(code);
+    this.schedulePersist();
   }
 
   private rebuildTuningPreviewRound(room: InternalRoom) {

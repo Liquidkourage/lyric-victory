@@ -332,8 +332,17 @@ code {
   font-family: "Roboto Condensed", "Arial Narrow", system-ui, sans-serif;
 }
 
+.display-score-ticker-viewport {
+  overflow: hidden;
+  mask-image: linear-gradient(to right, transparent, black 5rem, black calc(100% - 1.5rem));
+}
+
+.display-score-ticker-track {
+  transition: transform 0.42s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 .display-score-pop {
-  animation: display-score-pop-in 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: display-score-ticker-in 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .display-score-pop--settled {
@@ -363,14 +372,14 @@ code {
   }
 }
 
-@keyframes display-score-pop-in {
+@keyframes display-score-ticker-in {
   0% {
     opacity: 0;
-    transform: translateY(10px) scale(0.94);
+    transform: translateX(1.25rem) scale(0.96);
   }
   100% {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: translateX(0) scale(1);
   }
 }
 
