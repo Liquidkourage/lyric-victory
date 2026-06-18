@@ -92,20 +92,27 @@ function LyricLineBlock({
   tokens,
   columnWidthPx,
   params,
+  lineIndex,
 }: {
   tokens: PublicToken[];
   columnWidthPx: number;
   params: DistanceLayoutParams;
+  lineIndex: number;
 }) {
   const pack = packTokensIntoRows(tokens, columnWidthPx, params);
   const wordGap = params.wordGap * pack.wordGapScale;
 
   return (
     <div
-      className={`tv-distance-lane${pack.wrapped ? " tv-distance-lane--wrapped" : ""}`}
+      className={[
+        "tv-distance-lane",
+        pack.wrapped ? "tv-distance-lane--wrapped" : "",
+        lineIndex % 2 === 1 ? "tv-distance-lane--stripe" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
       style={
         {
-          "--tvd-line-font-scale": pack.fontScale,
           "--tvd-line-word-gap": `${wordGap}px`,
           width: pack.widthBoostPx > 0 ? `calc(100% + ${pack.widthBoostPx}px)` : undefined,
           marginLeft: pack.widthBoostPx > 0 ? `${-pack.widthBoostPx / 2}px` : undefined,
@@ -141,6 +148,7 @@ function applyLayoutStyles(
   sheet.style.setProperty("--tvd-cont-gap", `${params.continuationGap}px`);
   sheet.style.setProperty("--tvd-line-gap", `${params.lineGap}px`);
   sheet.style.setProperty("--tvd-stanza-gap", `${params.stanzaGap}px`);
+  sheet.style.setProperty("--tvd-section-gap", `${params.sectionGap}px`);
   sheet.style.setProperty("--tvd-column-gap", `${params.columnGap}px`);
   sheet.style.setProperty("--tvd-columns", String(params.columnCount));
   sheet.style.width = `${viewportWidth}px`;
@@ -292,6 +300,7 @@ function LyricSheet({
                         tokens={line.tokens}
                         columnWidthPx={columnWidthPx}
                         params={params}
+                        lineIndex={lineIndex}
                       />
                     ))}
                   </div>

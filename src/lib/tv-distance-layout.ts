@@ -35,6 +35,7 @@ export interface DistanceLayoutParams {
   continuationGap: number;
   lineGap: number;
   stanzaGap: number;
+  sectionGap: number;
   columnGap: number;
   chipHeight: number;
   chipFontSize: number;
@@ -404,11 +405,9 @@ export function packTokensIntoRows(
     { widthMul: 1, widthBoostPx: 0, wordGapScale: 1, fontScale: 1 },
     { widthMul: 1.05, widthBoostPx: 8, wordGapScale: 1, fontScale: 1 },
     { widthMul: 1.08, widthBoostPx: 12, wordGapScale: 1, fontScale: 1 },
-    { widthMul: 1, widthBoostPx: 0, wordGapScale: 0.82, fontScale: 1 },
+    { widthMul: 1, widthBoostPx: 0, wordGapScale: 0.84, fontScale: 1 },
     { widthMul: 1.03, widthBoostPx: 6, wordGapScale: 0.88, fontScale: 1 },
-    { widthMul: 1, widthBoostPx: 0, wordGapScale: 1, fontScale: 0.94 },
-    { widthMul: 1.04, widthBoostPx: 8, wordGapScale: 0.9, fontScale: 0.96 },
-    { widthMul: 1.06, widthBoostPx: 10, wordGapScale: 0.85, fontScale: 0.95 },
+    { widthMul: 1.06, widthBoostPx: 10, wordGapScale: 0.86, fontScale: 1 },
   ];
 
   for (const strategy of strategies) {
@@ -427,7 +426,7 @@ export function packTokensIntoRows(
       fontScale: strategy.fontScale,
       widthBoostPx: strategy.widthBoostPx,
       wrapped: rows.length > 1,
-      score: score - (strategy.fontScale < 1 ? (1 - strategy.fontScale) * 40 : 0),
+      score,
     });
   }
 
@@ -459,13 +458,14 @@ export function countLyricLines(sections: LyricSection[]): number {
 export function gapsForRevealedFontSize(revealedFontSize: number) {
   return {
     wordGap: Math.min(6, Math.max(2, revealedFontSize * 0.1)),
-    continuationGap: Math.min(3, Math.max(1, revealedFontSize * 0.035)),
-    lineGap: Math.min(14, Math.max(8, revealedFontSize * 0.24)),
-    stanzaGap: Math.min(44, Math.max(22, revealedFontSize * 0.58)),
+    continuationGap: Math.min(2, Math.max(1, revealedFontSize * 0.028)),
+    lineGap: Math.min(12, Math.max(6, revealedFontSize * 0.2)),
+    stanzaGap: Math.min(48, Math.max(24, revealedFontSize * 0.62)),
+    sectionGap: Math.min(60, Math.max(32, revealedFontSize * 0.78)),
     columnGap: Math.min(48, Math.max(24, revealedFontSize * 0.45)),
-    chipHeight: revealedFontSize * 0.98,
-    chipFontSize: revealedFontSize * 0.62,
-    chipMinWidth: revealedFontSize * 1.12,
+    chipHeight: revealedFontSize * 0.9,
+    chipFontSize: revealedFontSize * 0.56,
+    chipMinWidth: revealedFontSize * 1.04,
   };
 }
 
