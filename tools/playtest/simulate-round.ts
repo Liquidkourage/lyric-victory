@@ -64,8 +64,18 @@ function normalizeBaseUrl(raw: string): string {
   return trimmed;
 }
 
+function looksLikeUrl(value: string): boolean {
+  const trimmed = value.trim();
+  return (
+    trimmed.startsWith("http://") ||
+    trimmed.startsWith("https://") ||
+    /^[\w.-]+\.(railway\.app|up\.railway\.app)(\/|$)/i.test(trimmed)
+  );
+}
+
 function readCliUrl(): string | null {
-  const args = process.argv.slice(2);
+  const args = process.argv.slice(2).filter((arg) => arg !== "--");
+
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     if ((arg === "--url" || arg === "-u") && args[index + 1]) {
@@ -74,7 +84,20 @@ function readCliUrl(): string | null {
     if (arg.startsWith("--url=")) {
       return arg.slice("--url=".length);
     }
+    if (arg.startsWith("--remote=") && arg.length > "--remote=".length) {
+      return arg.slice("--remote=".length);
+    }
   }
+
+  for (const arg of args) {
+    if (arg === "--remote" || arg === "--help" || arg === "-h" || arg.startsWith("-")) {
+      continue;
+    }
+    if (looksLikeUrl(arg)) {
+      return arg;
+    }
+  }
+
   return null;
 }
 
@@ -91,6 +114,7 @@ function resolveBaseUrl(requireRemote: boolean): string {
   if (requireRemote) {
     console.error("Remote playtest needs your Railway public URL.\n");
     console.error("Option A — one-off:");
+    console.error("  npm run playtest:remote -- https://your-app.up.railway.app");
     console.error("  npm run playtest:remote -- --url https://your-app.up.railway.app\n");
     console.error("Option B — save it locally (gitignored):");
     console.error("  copy .env.playtest.example .env.playtest");
@@ -108,10 +132,12 @@ function printUsage() {
 
 Usage:
   npm run playtest:round
+  npm run playtest:remote -- https://your-app.up.railway.app
   npm run playtest:remote -- --url https://your-app.up.railway.app
 
 Options:
   --url, -u   Target server (local dev or Railway public URL)
+  <url>       Bare URL also works (Windows/npm often drops --url)
   --remote    Require a remote URL (via flag, PLAYTEST_URL, or .env.playtest)
   --help, -h  Show this help
 
