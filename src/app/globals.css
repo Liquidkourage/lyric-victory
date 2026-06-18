@@ -164,26 +164,7 @@ code {
   padding: 2px 4px;
 }
 
-.tv-distance-section {
-  break-inside: avoid-column;
-  margin-bottom: var(--tvd-section-gap, 10px);
-}
-
-.tv-distance-section-label {
-  display: block;
-  margin-bottom: calc(var(--tvd-section-gap, 10px) * 0.45);
-  font-size: calc(var(--tvd-font, 32px) * 0.42);
-  font-weight: 800;
-  letter-spacing: 0.14em;
-  color: rgba(253, 224, 71, 0.55);
-}
-
-.tv-distance-section-words {
-  display: inline;
-  line-height: calc(var(--tvd-chip-height, 36px) * 1.05);
-}
-
-.tv-distance-section-words > * {
+.tv-distance-flow > * {
   margin-right: var(--tvd-word-gap, 6px);
   margin-bottom: calc(var(--tvd-word-gap, 6px) * 0.35);
 }

@@ -3,9 +3,16 @@ import type { PublicLine, PublicToken } from "./types";
 
 const LINE_BREAK_MARKER = "/";
 
-export interface DistanceSection {
-  label: string | null;
-  tokens: PublicToken[];
+/** Flatten all lyric lines into one continuous word flow (no section labels or line breaks). */
+export function buildDistanceFlowTokens(lines: PublicLine[]): PublicToken[] {
+  const visible = getVisibleLyricLines(lines);
+  const tokens: PublicToken[] = [];
+
+  for (const line of visible) {
+    tokens.push(...sanitizeLineTokensForTv(line.tokens));
+  }
+
+  return tokens;
 }
 
 export interface DistanceLayoutParams {
@@ -27,57 +34,6 @@ export const DISTANCE_COLUMN_MAX = 5;
 
 function isPunctuationOnly(value: string): boolean {
   return value.length > 0 && !/[a-zA-Z]/.test(value);
-}
-
-function sectionLabelFor(index: number, lines: PublicLine[]): string | null {
-  if (lines.length === 0) return null;
-  const first = lines[0].tokens[0];
-  const startsParen =
-    first?.type === "text" && first.value.trim().startsWith("(");
-
-  if (index === 0) return "VERSE";
-  if (startsParen) return index === 1 ? "CHORUS" : "BRIDGE";
-  return `VERSE ${index + 1}`;
-}
-
-/** Group lyric lines into ordered sections; words flow inside each section (no line-break preservation). */
-export function buildDistanceSections(lines: PublicLine[]): DistanceSection[] {
-  const visible = getVisibleLyricLines(lines);
-  if (visible.length === 0) return [];
-
-  const sections: DistanceSection[] = [];
-  let bucket: PublicLine[] = [];
-
-  const flush = () => {
-    if (bucket.length === 0) return;
-    const tokens: PublicToken[] = [];
-    for (const line of bucket) {
-      tokens.push(...sanitizeLineTokensForTv(line.tokens));
-    }
-    if (tokens.length > 0) {
-      sections.push({
-        label: sectionLabelFor(sections.length, bucket),
-        tokens,
-      });
-    }
-    bucket = [];
-  };
-
-  for (const line of visible) {
-    const startsParen =
-      line.tokens[0]?.type === "text" && line.tokens[0].value.trim().startsWith("(");
-    if (startsParen && bucket.length > 0) {
-      flush();
-    }
-    bucket.push(line);
-  }
-  flush();
-
-  if (sections.length === 1) {
-    sections[0].label = null;
-  }
-
-  return sections;
 }
 
 export function gapsForRevealedFontSize(revealedFontSize: number) {

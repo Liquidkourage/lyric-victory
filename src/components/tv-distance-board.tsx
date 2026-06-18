@@ -3,13 +3,12 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import {
-  buildDistanceSections,
+  buildDistanceFlowTokens,
   buildLayoutParams,
   isPunctuationToken,
   isRenderableToken,
   searchDistanceLayout,
   type DistanceLayoutParams,
-  type DistanceSection,
 } from "@/lib/tv-distance-layout";
 import type { PublicLine, PublicToken } from "@/lib/types";
 
@@ -88,37 +87,11 @@ function renderFlowToken(token: PublicToken, key: string, dense: boolean) {
   );
 }
 
-function DistanceSectionBlock({
-  section,
-  sectionIndex,
-  dense,
-}: {
-  section: DistanceSection;
-  sectionIndex: number;
-  dense: boolean;
-}) {
-  const tokens = section.tokens.filter(isRenderableToken);
-
-  return (
-    <div className="tv-distance-section" data-tv-distance-section>
-      {section.label ? (
-        <div className="tv-distance-section-label" aria-hidden>
-          {section.label}
-        </div>
-      ) : null}
-      <div className="tv-distance-section-words">
-        {tokens.map((token, index) => renderFlowToken(token, `${sectionIndex}-${index}`, dense))}
-      </div>
-    </div>
-  );
-}
-
 function applyLayoutStyles(element: HTMLElement, params: DistanceLayoutParams, maxHeight: number) {
   element.style.setProperty("--tvd-font", `${params.revealedFontSize}px`);
   element.style.setProperty("--tvd-chip-font", `${params.chipFontSize}px`);
   element.style.setProperty("--tvd-chip-height", `${params.chipHeight}px`);
   element.style.setProperty("--tvd-word-gap", `${params.wordGap}px`);
-  element.style.setProperty("--tvd-section-gap", `${params.sectionGap}px`);
   element.style.setProperty("--tvd-column-gap", `${params.columnGap}px`);
   element.style.columnGap = `${params.columnGap}px`;
   element.style.columnCount = String(params.columnCount);
@@ -133,7 +106,7 @@ function contentFits(flow: HTMLElement, maxHeight: number): boolean {
 export function DistanceLyricBoard({ lines }: { lines: PublicLine[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const flowRef = useRef<HTMLDivElement>(null);
-  const sections = useMemo(() => buildDistanceSections(lines), [lines]);
+  const tokens = useMemo(() => buildDistanceFlowTokens(lines).filter(isRenderableToken), [lines]);
   const [layout, setLayout] = useState<DistanceLayoutParams>(() =>
     buildLayoutParams(36, 3, false),
   );
@@ -141,7 +114,7 @@ export function DistanceLyricBoard({ lines }: { lines: PublicLine[] }) {
   useLayoutEffect(() => {
     const container = containerRef.current;
     const flow = flowRef.current;
-    if (!container || !flow || sections.length === 0) return;
+    if (!container || !flow || tokens.length === 0) return;
 
     const runLayout = () => {
       const maxHeight = container.clientHeight;
@@ -168,9 +141,9 @@ export function DistanceLyricBoard({ lines }: { lines: PublicLine[] }) {
     const observer = new ResizeObserver(runLayout);
     observer.observe(container);
     return () => observer.disconnect();
-  }, [lines, sections.length]);
+  }, [lines, tokens.length]);
 
-  if (sections.length === 0) {
+  if (tokens.length === 0) {
     return null;
   }
 
@@ -186,20 +159,12 @@ export function DistanceLyricBoard({ lines }: { lines: PublicLine[] }) {
             "--tvd-chip-font": `${layout.chipFontSize}px`,
             "--tvd-chip-height": `${layout.chipHeight}px`,
             "--tvd-word-gap": `${layout.wordGap}px`,
-            "--tvd-section-gap": `${layout.sectionGap}px`,
             "--tvd-column-gap": `${layout.columnGap}px`,
             columnCount: layout.columnCount,
           } as React.CSSProperties
         }
       >
-        {sections.map((section, index) => (
-          <DistanceSectionBlock
-            key={`${section.label ?? "part"}-${index}`}
-            section={section}
-            sectionIndex={index}
-            dense={layout.dense}
-          />
-        ))}
+        {tokens.map((token, index) => renderFlowToken(token, `t-${index}`, layout.dense))}
       </div>
     </div>
   );
