@@ -3,16 +3,120 @@ import type { PublicLine, PublicToken } from "./types";
 
 const LINE_BREAK_MARKER = "/";
 
-/** Flatten all lyric lines into one continuous word flow (no section labels or line breaks). */
-export function buildDistanceFlowTokens(lines: PublicLine[]): PublicToken[] {
-  const visible = getVisibleLyricLines(lines);
-  const tokens: PublicToken[] = [];
+export interface DistancePhraseLine {
+  tokens: PublicToken[];
+}
 
-  for (const line of visible) {
-    tokens.push(...sanitizeLineTokensForTv(line.tokens));
+export interface PhraseSplitOptions {
+  targetTokens: number;
+  maxTokens: number;
+  preserveUpTo: number;
+}
+
+export function phraseOptionsForColumnCount(columnCount: number): PhraseSplitOptions {
+  if (columnCount <= 2) {
+    return { targetTokens: 6, maxTokens: 8, preserveUpTo: 8 };
+  }
+  if (columnCount <= 4) {
+    return { targetTokens: 8, maxTokens: 10, preserveUpTo: 10 };
+  }
+  return { targetTokens: 9, maxTokens: 11, preserveUpTo: 11 };
+}
+
+export function countPhraseUnits(tokens: PublicToken[]): number {
+  return tokens.filter(isPhraseUnit).length;
+}
+
+function isPhraseUnit(token: PublicToken): boolean {
+  if (!isRenderableToken(token)) return false;
+  return !isPunctuationToken(token);
+}
+
+function splitTokensIntoPhrases(
+  tokens: PublicToken[],
+  options: PhraseSplitOptions,
+): PublicToken[][] {
+  const phrases: PublicToken[][] = [];
+  let current: PublicToken[] = [];
+  let unitCount = 0;
+
+  const pushCurrent = () => {
+    if (current.length === 0) return;
+    phrases.push(current);
+    current = [];
+    unitCount = 0;
+  };
+
+  for (const token of tokens) {
+    const addsUnit = isPhraseUnit(token);
+
+    if (addsUnit && unitCount >= options.targetTokens && current.length > 0) {
+      pushCurrent();
+    }
+
+    current.push(token);
+    if (addsUnit) unitCount += 1;
+
+    if (unitCount >= options.maxTokens) {
+      pushCurrent();
+    }
   }
 
-  return tokens;
+  pushCurrent();
+
+  if (phrases.length > 1) {
+    const last = phrases[phrases.length - 1]!;
+    const lastUnits = countPhraseUnits(last);
+    const prev = phrases[phrases.length - 2]!;
+    const prevUnits = countPhraseUnits(prev);
+
+    if (lastUnits > 0 && lastUnits < 4 && prevUnits + lastUnits <= options.maxTokens) {
+      phrases[phrases.length - 2] = [...prev, ...last];
+      phrases.pop();
+    }
+  }
+
+  return phrases;
+}
+
+/**
+ * Preserve original lyric line breaks when short enough; otherwise split into 5–10 token phrases.
+ * Phrase targets vary by column count so 3–4 column layouts get scan-friendly row lengths.
+ */
+export function buildDistancePhraseLines(
+  lines: PublicLine[],
+  columnCount: number,
+): DistancePhraseLine[] {
+  const options = phraseOptionsForColumnCount(columnCount);
+  const visible = getVisibleLyricLines(lines);
+  const phrases: DistancePhraseLine[] = [];
+
+  for (const line of visible) {
+    const tokens = sanitizeLineTokensForTv(line.tokens).filter(isRenderableToken);
+    if (tokens.length === 0) continue;
+
+    const units = countPhraseUnits(tokens);
+    if (units <= options.preserveUpTo) {
+      phrases.push({ tokens });
+      continue;
+    }
+
+    for (const chunk of splitTokensIntoPhrases(tokens, options)) {
+      phrases.push({ tokens: chunk });
+    }
+  }
+
+  return phrases;
+}
+
+export function summarizePhraseLines(phrases: DistancePhraseLine[]) {
+  const counts = phrases.map((phrase) => countPhraseUnits(phrase.tokens));
+  const total = counts.reduce((sum, count) => sum + count, 0);
+
+  return {
+    avgTokensPerLine: counts.length > 0 ? total / counts.length : 0,
+    maxTokensPerLine: counts.length > 0 ? Math.max(...counts) : 0,
+  };
 }
 
 export interface DistanceLayoutParams {
@@ -31,10 +135,10 @@ export const DISTANCE_FONT_MIN = 26;
 export const DISTANCE_COLUMN_MIN = 2;
 export const DISTANCE_COLUMN_MAX = 5;
 
-export const TARGET_HEIGHT_RATIO = 0.9;
-export const TARGET_WIDTH_RATIO = 0.96;
-export const MIN_ACCEPTABLE_HEIGHT_RATIO = 0.88;
-export const MAX_UNUSED_HEIGHT_RATIO = 0.12;
+export const TARGET_HEIGHT_RATIO = 0.895;
+export const TARGET_WIDTH_RATIO = 0.94;
+export const TARGET_TOKENS_PER_LINE = 9;
+export const IDEAL_TOKENS_PER_LINE: [number, number] = [8, 10];
 
 function isPunctuationOnly(value: string): boolean {
   return value.length > 0 && !/[a-zA-Z]/.test(value);
@@ -44,10 +148,10 @@ export function gapsForRevealedFontSize(revealedFontSize: number, dense = false)
   const scale = dense ? 0.82 : 1;
   return {
     wordGap: Math.min(12, Math.max(4, revealedFontSize * 0.18 * scale)),
-    rowGap: Math.min(16, Math.max(5, revealedFontSize * 0.24 * scale)),
+    rowGap: Math.min(14, Math.max(4, revealedFontSize * 0.2 * scale)),
     columnGap: Math.min(28, Math.max(10, revealedFontSize * 0.35 * scale)),
-    chipHeight: revealedFontSize * 1.15,
-    chipFontSize: revealedFontSize * 0.85,
+    chipHeight: revealedFontSize * 1.05,
+    chipFontSize: revealedFontSize * 0.72,
   };
 }
 
@@ -75,11 +179,15 @@ export interface DistanceLayoutMeasurement {
   contentScrollWidth: number;
   viewportHeight: number;
   viewportWidth: number;
+  avgTokensPerLine: number;
+  maxTokensPerLine: number;
 }
 
 export interface DistanceLayoutDebugInfo {
   columns: number;
   revealedFontSize: number;
+  avgTokensPerLine: number;
+  maxTokensPerLine: number;
   contentScrollHeight: number;
   viewportHeight: number;
   usedHeightRatio: number;
@@ -94,6 +202,8 @@ export function toDebugInfo(measurement: DistanceLayoutMeasurement): DistanceLay
   return {
     columns: measurement.params.columnCount,
     revealedFontSize: measurement.revealedFontSize,
+    avgTokensPerLine: measurement.avgTokensPerLine,
+    maxTokensPerLine: measurement.maxTokensPerLine,
     contentScrollHeight: measurement.contentScrollHeight,
     viewportHeight: measurement.viewportHeight,
     usedHeightRatio: measurement.usedHeightRatio,
@@ -105,12 +215,48 @@ export function toDebugInfo(measurement: DistanceLayoutMeasurement): DistanceLay
   };
 }
 
+function lineLengthScore(maxTokensPerLine: number, avgTokensPerLine: number): number {
+  let score = 0;
+
+  if (maxTokensPerLine > 12) {
+    score -= 240 + (maxTokensPerLine - 12) * 40;
+  } else {
+    score -= Math.abs(maxTokensPerLine - TARGET_TOKENS_PER_LINE) * 18;
+    if (
+      maxTokensPerLine >= IDEAL_TOKENS_PER_LINE[0] &&
+      maxTokensPerLine <= IDEAL_TOKENS_PER_LINE[1]
+    ) {
+      score += 24;
+    }
+  }
+
+  score -= Math.abs(avgTokensPerLine - 8) * 10;
+  return score;
+}
+
 function heightFitScore(usedHeightRatio: number): number {
-  return -Math.abs(usedHeightRatio - TARGET_HEIGHT_RATIO);
+  if (usedHeightRatio < 0.85 || usedHeightRatio > 0.94) {
+    const distance =
+      usedHeightRatio < 0.85 ? 0.85 - usedHeightRatio : usedHeightRatio - 0.94;
+    return -distance * 120;
+  }
+  return 24 - Math.abs(usedHeightRatio - TARGET_HEIGHT_RATIO) * 80;
 }
 
 function widthFitScore(usedWidthRatio: number): number {
-  return -Math.abs(usedWidthRatio - TARGET_WIDTH_RATIO);
+  if (usedWidthRatio < 0.9 || usedWidthRatio > 0.98) {
+    const distance =
+      usedWidthRatio < 0.9 ? 0.9 - usedWidthRatio : usedWidthRatio - 0.98;
+    return -distance * 100;
+  }
+  return 16 - Math.abs(usedWidthRatio - TARGET_WIDTH_RATIO) * 60;
+}
+
+function columnPreferenceScore(columnCount: number): number {
+  if (columnCount === 3 || columnCount === 4) return 28;
+  if (columnCount === 5) return 8;
+  if (columnCount === 2) return -22;
+  return 0;
 }
 
 function compareDistanceLayouts(
@@ -121,6 +267,14 @@ function compareDistanceLayouts(
     return a.revealedFontSize - b.revealedFontSize;
   }
 
+  const lineDelta =
+    lineLengthScore(a.maxTokensPerLine, a.avgTokensPerLine) -
+    lineLengthScore(b.maxTokensPerLine, b.avgTokensPerLine);
+  if (lineDelta !== 0) return lineDelta;
+
+  const columnDelta = columnPreferenceScore(a.params.columnCount) - columnPreferenceScore(b.params.columnCount);
+  if (columnDelta !== 0) return columnDelta;
+
   const heightDelta = heightFitScore(a.usedHeightRatio) - heightFitScore(b.usedHeightRatio);
   if (heightDelta !== 0) return heightDelta;
 
@@ -130,52 +284,58 @@ function compareDistanceLayouts(
   return b.params.columnCount - a.params.columnCount;
 }
 
-function isAcceptableMeasurement(measurement: DistanceLayoutMeasurement): boolean {
-  if (measurement.overflowX > 1 || measurement.overflowY > 1) return false;
-
-  const unusedHeight = 1 - measurement.usedHeightRatio;
-  if (unusedHeight > MAX_UNUSED_HEIGHT_RATIO && measurement.revealedFontSize < DISTANCE_FONT_MAX) {
-    return false;
-  }
-
-  return true;
+export interface DistanceLayoutPick {
+  params: DistanceLayoutParams;
+  measurement: DistanceLayoutMeasurement;
+  phraseLines: DistancePhraseLine[];
 }
 
 /**
- * Evaluate every font size per column count, reject overflow, then score survivors.
- * Goal: maximize revealed font while filling ~90% of the lyric viewport.
+ * For each column count, split phrases for scan-friendly row lengths, then evaluate fonts.
+ * Score for distance readability: font size, line length, viewport fill, column preference.
  */
 export function pickBestDistanceLayout(
-  measure: (params: DistanceLayoutParams) => DistanceLayoutMeasurement,
-): { params: DistanceLayoutParams; measurement: DistanceLayoutMeasurement } {
+  lines: PublicLine[],
+  measure: (
+    params: DistanceLayoutParams,
+    phrases: DistancePhraseLine[],
+  ) => DistanceLayoutMeasurement,
+): DistanceLayoutPick {
   const valid: DistanceLayoutMeasurement[] = [];
-  const overflowOnly: DistanceLayoutMeasurement[] = [];
+  const phraseLinesByColumn = new Map<number, DistancePhraseLine[]>();
 
   for (let columnCount = DISTANCE_COLUMN_MIN; columnCount <= DISTANCE_COLUMN_MAX; columnCount += 1) {
+    const phrases = buildDistancePhraseLines(lines, columnCount);
+    phraseLinesByColumn.set(columnCount, phrases);
+
     for (let fontSize = DISTANCE_FONT_MIN; fontSize <= DISTANCE_FONT_MAX; fontSize += 1) {
       for (const dense of [false, true] as const) {
-        const measurement = measure(buildLayoutParams(fontSize, columnCount, dense));
+        const measurement = measure(buildLayoutParams(fontSize, columnCount, dense), phrases);
         if (measurement.overflowX > 1 || measurement.overflowY > 1) continue;
-
-        if (isAcceptableMeasurement(measurement)) {
-          valid.push(measurement);
-        } else {
-          overflowOnly.push(measurement);
-        }
+        if (measurement.revealedFontSize < DISTANCE_FONT_MIN) continue;
+        valid.push(measurement);
       }
     }
   }
 
-  const pool = valid.length > 0 ? valid : overflowOnly;
-
-  if (pool.length === 0) {
-    const fallback = measure(buildLayoutParams(DISTANCE_FONT_MIN, DISTANCE_COLUMN_MAX, true));
-    return { params: fallback.params, measurement: fallback };
+  if (valid.length === 0) {
+    const columnCount = 4;
+    const phrases = buildDistancePhraseLines(lines, columnCount);
+    const fallback = measure(buildLayoutParams(DISTANCE_FONT_MIN, columnCount, true), phrases);
+    return {
+      params: fallback.params,
+      measurement: fallback,
+      phraseLines: phrases,
+    };
   }
 
-  pool.sort(compareDistanceLayouts);
-  const best = pool[pool.length - 1]!;
-  return { params: best.params, measurement: best };
+  valid.sort(compareDistanceLayouts);
+  const best = valid[valid.length - 1]!;
+  return {
+    params: best.params,
+    measurement: best,
+    phraseLines: phraseLinesByColumn.get(best.params.columnCount) ?? [],
+  };
 }
 
 export function isRenderableToken(token: PublicToken): boolean {

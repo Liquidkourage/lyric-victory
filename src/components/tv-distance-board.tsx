@@ -1,17 +1,18 @@
 "use client";
 
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import {
-  buildDistanceFlowTokens,
+  buildDistancePhraseLines,
   buildLayoutParams,
   isPunctuationToken,
-  isRenderableToken,
   pickBestDistanceLayout,
+  summarizePhraseLines,
   toDebugInfo,
   type DistanceLayoutDebugInfo,
   type DistanceLayoutMeasurement,
   type DistanceLayoutParams,
+  type DistancePhraseLine,
 } from "@/lib/tv-distance-layout";
 import type { PublicLine, PublicToken } from "@/lib/types";
 
@@ -110,6 +111,26 @@ function applyLayoutStyles(
   flow.dataset.dense = params.dense ? "true" : "false";
 }
 
+function measureLaneTokenCounts(flow: HTMLElement) {
+  const lanes = flow.querySelectorAll<HTMLElement>(".tv-distance-lane");
+  const counts: number[] = [];
+
+  for (const lane of lanes) {
+    let units = 0;
+    for (const child of lane.children) {
+      if (child.classList.contains("tv-distance-punct")) continue;
+      units += 1;
+    }
+    if (units > 0) counts.push(units);
+  }
+
+  const total = counts.reduce((sum, count) => sum + count, 0);
+  return {
+    avgTokensPerLine: counts.length > 0 ? total / counts.length : 0,
+    maxTokensPerLine: counts.length > 0 ? Math.max(...counts) : 0,
+  };
+}
+
 function measureContentExtent(flow: HTMLElement, viewportWidth: number) {
   const flowRect = flow.getBoundingClientRect();
   let contentRight = 0;
@@ -130,6 +151,7 @@ function measureContentExtent(flow: HTMLElement, viewportWidth: number) {
 function measureLayout(
   flow: HTMLElement,
   params: DistanceLayoutParams,
+  phrases: DistancePhraseLine[],
   viewportHeight: number,
   viewportWidth: number,
 ): DistanceLayoutMeasurement {
@@ -138,6 +160,8 @@ function measureLayout(
   const { contentScrollHeight, contentScrollWidth } = measureContentExtent(flow, viewportWidth);
   const overflowY = Math.max(0, contentScrollHeight - viewportHeight);
   const overflowX = Math.max(0, contentScrollWidth - viewportWidth);
+  const laneCounts = measureLaneTokenCounts(flow);
+  const phraseSummary = summarizePhraseLines(phrases);
 
   return {
     params,
@@ -150,6 +174,8 @@ function measureLayout(
     contentScrollWidth,
     viewportHeight,
     viewportWidth,
+    avgTokensPerLine: laneCounts.avgTokensPerLine || phraseSummary.avgTokensPerLine,
+    maxTokensPerLine: laneCounts.maxTokensPerLine || phraseSummary.maxTokensPerLine,
   };
 }
 
@@ -158,6 +184,8 @@ function LayoutDebugOverlay({ debug }: { debug: DistanceLayoutDebugInfo }) {
     <div className="tv-distance-debug pointer-events-none absolute right-2 top-2 z-20 font-mono text-xs leading-relaxed text-[#fde047]">
       <div>columns: {debug.columns}</div>
       <div>revealedFontSize: {debug.revealedFontSize}px</div>
+      <div>avgTokensPerLine: {debug.avgTokensPerLine.toFixed(1)}</div>
+      <div>maxTokensPerLine: {debug.maxTokensPerLine}</div>
       <div>content scrollHeight: {Math.round(debug.contentScrollHeight)}</div>
       <div>viewport height: {Math.round(debug.viewportHeight)}</div>
       <div>usedHeightRatio: {debug.usedHeightRatio.toFixed(3)}</div>
@@ -179,41 +207,56 @@ export function DistanceLyricBoard({
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const flowRef = useRef<HTMLDivElement>(null);
-  const tokens = useMemo(() => buildDistanceFlowTokens(lines).filter(isRenderableToken), [lines]);
   const [layout, setLayout] = useState<DistanceLayoutParams>(() =>
-    buildLayoutParams(36, 3, false),
+    buildLayoutParams(36, 4, false),
+  );
+  const [phraseLines, setPhraseLines] = useState<DistancePhraseLine[]>(() =>
+    buildDistancePhraseLines(lines, 4),
   );
   const [debugInfo, setDebugInfo] = useState<DistanceLayoutDebugInfo | null>(null);
 
   useLayoutEffect(() => {
     const container = containerRef.current;
     const flow = flowRef.current;
-    if (!container || !flow || tokens.length === 0) return;
+    if (!container || !flow) return;
 
     const runLayout = () => {
       const viewportHeight = container.clientHeight;
       const viewportWidth = container.clientWidth;
       if (viewportHeight <= 0 || viewportWidth <= 0) return;
 
-      const { params: best, measurement } = pickBestDistanceLayout((params) =>
-        measureLayout(flow, params, viewportHeight, viewportWidth),
-      );
+      let bestPick: ReturnType<typeof pickBestDistanceLayout> | null = null;
+      let measuringColumn = -1;
 
-      flushSync(() => {
-        setLayout(best);
-        setDebugInfo(toDebugInfo(measurement));
+      const result = pickBestDistanceLayout(lines, (params, phrases) => {
+        if (params.columnCount !== measuringColumn) {
+          measuringColumn = params.columnCount;
+          flushSync(() => {
+            setPhraseLines(phrases);
+          });
+        }
+
+        return measureLayout(flow, params, phrases, viewportHeight, viewportWidth);
       });
 
-      applyLayoutStyles(flow, best, viewportHeight, viewportWidth);
+      bestPick = result;
+
+      flushSync(() => {
+        setPhraseLines(bestPick.phraseLines);
+        setLayout(bestPick.params);
+        setDebugInfo(toDebugInfo(bestPick.measurement));
+      });
+
+      applyLayoutStyles(flow, bestPick.params, viewportHeight, viewportWidth);
     };
 
     runLayout();
     const observer = new ResizeObserver(runLayout);
     observer.observe(container);
     return () => observer.disconnect();
-  }, [lines, tokens.length]);
+  }, [lines]);
 
-  if (tokens.length === 0) {
+  if (phraseLines.length === 0) {
     return null;
   }
 
@@ -236,7 +279,16 @@ export function DistanceLyricBoard({
           } as React.CSSProperties
         }
       >
-        {tokens.map((token, index) => renderFlowToken(token, `t-${index}`, layout.dense))}
+        {phraseLines.map((phrase, laneIndex) => (
+          <div
+            key={`lane-${laneIndex}`}
+            className={`tv-distance-lane${laneIndex % 2 === 1 ? " tv-distance-lane--alt" : ""}`}
+          >
+            {phrase.tokens.map((token, tokenIndex) =>
+              renderFlowToken(token, `lane-${laneIndex}-t-${tokenIndex}`, layout.dense),
+            )}
+          </div>
+        ))}
       </div>
     </div>
   );
