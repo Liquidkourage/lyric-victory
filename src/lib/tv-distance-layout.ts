@@ -5,6 +5,7 @@ const LINE_BREAK_MARKER = "/";
 const SHORT_SONG_LINE_COUNT = 14;
 const MIN_WIDTH_RATIO = 0.7;
 const TARGET_MIN_WIDTH_RATIO = 0.85;
+const MIN_CONTINUATION_UNITS = 3;
 
 const SECTION_LABEL_PATTERN =
   /^\[?\s*(verse|chorus|bridge|intro|outro|pre-?chorus|hook|refrain|interlude|part)\s*\d*\]?\s*$/i;
@@ -62,6 +63,7 @@ export interface DistanceLayoutMeasurement {
   lineCount: number;
   sectionCount: number;
   wrappedLaneCount: number;
+  orphanWrapCount: number;
   maxTokensPerLine: number;
   avgTokensPerLine: number;
 }
@@ -72,6 +74,7 @@ export interface DistanceLayoutDebugInfo {
   lineCount: number;
   sectionCount: number;
   wrappedLaneCount: number;
+  orphanWrapCount: number;
   avgTokensPerLine: number;
   maxTokensPerLine: number;
   contentScrollHeight: number;
@@ -105,7 +108,7 @@ export function isPunctuationToken(token: PublicToken): boolean {
   return token.type === "text" && isPunctuationOnly(token.value);
 }
 
-function countLineUnits(tokens: PublicToken[]): number {
+export function countLineUnits(tokens: PublicToken[]): number {
   return tokens.filter((token) => isRenderableToken(token) && !isPunctuationToken(token)).length;
 }
 
@@ -178,6 +181,22 @@ export function flattenSectionsToLines(sections: LyricSection[]): FlatLine[] {
   return flat;
 }
 
+function groupFlatIntoStanzas(flat: FlatLine[]): FlatLine[][] {
+  const stanzas: FlatLine[][] = [];
+  let current: FlatLine[] = [];
+
+  for (const item of flat) {
+    if (item.isStanzaStart && current.length > 0) {
+      stanzas.push(current);
+      current = [];
+    }
+    current.push(item);
+  }
+
+  if (current.length > 0) stanzas.push(current);
+  return stanzas;
+}
+
 function rebuildSectionsFromFlatChunk(chunk: FlatLine[]): LyricSection[] {
   if (chunk.length === 0) return [];
 
@@ -206,68 +225,122 @@ function rebuildSectionsFromFlatChunk(chunk: FlatLine[]): LyricSection[] {
   return sections;
 }
 
-function snapSplitToStanzaStart(flat: FlatLine[], targetIndex: number, minIndex: number): number {
-  const searchRadius = 4;
-  let best = targetIndex;
-
-  for (let offset = 0; offset <= searchRadius; offset += 1) {
-    const forward = targetIndex + offset;
-    if (forward > minIndex && forward < flat.length && flat[forward]?.isStanzaStart) {
-      return forward;
-    }
-
-    const backward = targetIndex - offset;
-    if (backward > minIndex && backward < flat.length && flat[backward]?.isStanzaStart) {
-      return backward;
-    }
-  }
-
-  return best;
-}
-
-function splitFlatLinesIntoColumns(flat: FlatLine[], columnCount: number): FlatLine[][] {
+/** Assign whole stanzas to columns — never split a stanza across columns. */
+function splitStanzasIntoColumns(flat: FlatLine[], columnCount: number): FlatLine[][] {
   if (flat.length === 0) return Array.from({ length: columnCount }, () => []);
   if (columnCount <= 1) return [flat];
 
-  const linesPerColumn = Math.ceil(flat.length / columnCount);
-  const chunks: FlatLine[][] = [];
-  let start = 0;
+  const stanzas = groupFlatIntoStanzas(flat);
+  const chunks: FlatLine[][] = Array.from({ length: columnCount }, () => []);
+  const weights = Array(columnCount).fill(0);
 
-  for (let columnIndex = 0; columnIndex < columnCount; columnIndex += 1) {
-    if (start >= flat.length) {
-      chunks.push([]);
-      continue;
+  for (const stanza of stanzas) {
+    let target = 0;
+    for (let index = 1; index < columnCount; index += 1) {
+      if (weights[index]! < weights[target]!) target = index;
     }
 
-    const isLast = columnIndex === columnCount - 1;
-    let end = isLast ? flat.length : Math.min(start + linesPerColumn, flat.length);
-
-    if (!isLast && end < flat.length) {
-      end = snapSplitToStanzaStart(flat, end, start);
-      if (end <= start) end = Math.min(start + linesPerColumn, flat.length);
-    }
-
-    chunks.push(flat.slice(start, end));
-    start = end;
+    chunks[target]!.push(...stanza);
+    weights[target]! += stanza.length;
   }
 
   return chunks;
 }
 
-/**
- * Newspaper-style column flow: read down column 1, then column 2, etc.
- * Keeps stanza starts intact when possible and always returns N column slots.
- */
 export function distributeSectionsToColumns(
   sections: LyricSection[],
   columnCount: number,
 ): LyricSheetColumn[] {
   const flat = flattenSectionsToLines(sections);
-  const chunks = splitFlatLinesIntoColumns(flat, Math.max(1, columnCount));
+  const chunks = splitStanzasIntoColumns(flat, Math.max(1, columnCount));
 
   return chunks.map((chunk) => ({
     sections: rebuildSectionsFromFlatChunk(chunk),
   }));
+}
+
+export function computeColumnWidth(viewportWidth: number, params: DistanceLayoutParams): number {
+  const horizontalPadding = 16;
+  const gaps = Math.max(0, params.columnCount - 1) * params.columnGap;
+  return Math.max(120, (viewportWidth - horizontalPadding - gaps) / params.columnCount);
+}
+
+export function estimateTokenWidthPx(token: PublicToken, params: DistanceLayoutParams): number {
+  if (isPunctuationToken(token)) return params.revealedFontSize * 0.34;
+
+  if (token.type === "blank") {
+    if (token.revealed && token.answer) {
+      return Math.max(params.chipMinWidth, token.answer.length * params.revealedFontSize * 0.5);
+    }
+    return params.chipMinWidth;
+  }
+
+  return Math.max(params.revealedFontSize * 0.45, token.value.length * params.revealedFontSize * 0.5);
+}
+
+function countRowUnits(tokens: PublicToken[]): number {
+  return countLineUnits(tokens);
+}
+
+/** Pack one lyric line into 1–2 balanced rows for its column width. */
+export function packTokensIntoRows(
+  tokens: PublicToken[],
+  columnWidthPx: number,
+  params: DistanceLayoutParams,
+): PublicToken[][] {
+  if (tokens.length === 0) return [];
+
+  let totalWidth = 0;
+  for (const token of tokens) {
+    totalWidth += estimateTokenWidthPx(token, params) + params.wordGap;
+  }
+
+  if (totalWidth <= columnWidthPx * 1.02) {
+    return [tokens];
+  }
+
+  let bestSplit = 1;
+  let bestScore = Number.NEGATIVE_INFINITY;
+
+  for (let split = 1; split < tokens.length; split += 1) {
+    const first = tokens.slice(0, split);
+    const second = tokens.slice(split);
+    const firstUnits = countRowUnits(first);
+    const secondUnits = countRowUnits(second);
+
+    if (secondUnits === 0) continue;
+
+    let score = 0;
+    score -= Math.abs(firstUnits - secondUnits) * 12;
+
+    if (secondUnits <= 2) score -= 120;
+    if (secondUnits === 1) score -= 80;
+    if (firstUnits <= 2 && secondUnits > 2) score -= 60;
+
+    const firstWidth = first.reduce(
+      (sum, token) => sum + estimateTokenWidthPx(token, params) + params.wordGap,
+      0,
+    );
+    const secondWidth = second.reduce(
+      (sum, token) => sum + estimateTokenWidthPx(token, params) + params.wordGap,
+      0,
+    );
+
+    if (firstWidth <= columnWidthPx * 1.05) score += 20;
+    if (secondWidth <= columnWidthPx * 1.05) score += 20;
+    if (secondWidth > columnWidthPx * 1.15) score -= 40;
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestSplit = split;
+    }
+  }
+
+  const firstRow = tokens.slice(0, bestSplit);
+  const secondRow = tokens.slice(bestSplit);
+
+  if (secondRow.length === 0) return [firstRow];
+  return [firstRow, secondRow];
 }
 
 export function countLyricLines(sections: LyricSection[]): number {
@@ -280,13 +353,13 @@ export function countLyricLines(sections: LyricSection[]): number {
 
 export function gapsForRevealedFontSize(revealedFontSize: number) {
   return {
-    wordGap: Math.min(8, Math.max(3, revealedFontSize * 0.14)),
-    lineGap: Math.min(14, Math.max(6, revealedFontSize * 0.22)),
-    stanzaGap: Math.min(28, Math.max(12, revealedFontSize * 0.38)),
+    wordGap: Math.min(7, Math.max(3, revealedFontSize * 0.12)),
+    lineGap: Math.min(11, Math.max(5, revealedFontSize * 0.18)),
+    stanzaGap: Math.min(36, Math.max(16, revealedFontSize * 0.48)),
     columnGap: Math.min(48, Math.max(24, revealedFontSize * 0.45)),
-    chipHeight: revealedFontSize * 1.08,
-    chipFontSize: revealedFontSize * 0.78,
-    chipMinWidth: revealedFontSize * 1.22,
+    chipHeight: revealedFontSize * 1.02,
+    chipFontSize: revealedFontSize * 0.66,
+    chipMinWidth: revealedFontSize * 1.16,
   };
 }
 
@@ -308,6 +381,7 @@ export function toDebugInfo(measurement: DistanceLayoutMeasurement): DistanceLay
     lineCount: measurement.lineCount,
     sectionCount: measurement.sectionCount,
     wrappedLaneCount: measurement.wrappedLaneCount,
+    orphanWrapCount: measurement.orphanWrapCount,
     avgTokensPerLine: measurement.avgTokensPerLine,
     maxTokensPerLine: measurement.maxTokensPerLine,
     contentScrollHeight: measurement.contentScrollHeight,
@@ -325,21 +399,24 @@ function heightFitScore(usedHeightRatio: number): number {
   if (usedHeightRatio < 0.85 || usedHeightRatio > 0.95) {
     const distance =
       usedHeightRatio < 0.85 ? 0.85 - usedHeightRatio : usedHeightRatio - 0.95;
-    return -distance * 140;
+    return -distance * 120;
   }
-  return 24 - Math.abs(usedHeightRatio - TARGET_HEIGHT_RATIO) * 80;
+  return 20 - Math.abs(usedHeightRatio - TARGET_HEIGHT_RATIO) * 70;
 }
 
 function widthFitScore(usedWidthRatio: number): number {
   if (usedWidthRatio < TARGET_MIN_WIDTH_RATIO) {
-    return -((TARGET_MIN_WIDTH_RATIO - usedWidthRatio) * 220);
+    return -((TARGET_MIN_WIDTH_RATIO - usedWidthRatio) * 200);
   }
-  return 20 - Math.abs(usedWidthRatio - TARGET_WIDTH_RATIO) * 50;
+  return 16 - Math.abs(usedWidthRatio - TARGET_WIDTH_RATIO) * 45;
 }
 
-function wrapPenalty(wrappedLaneCount: number, lineCount: number): number {
-  if (lineCount === 0) return 0;
-  return -(wrappedLaneCount / lineCount) * 120 - wrappedLaneCount * 6;
+function wrapQualityScore(measurement: DistanceLayoutMeasurement): number {
+  return (
+    -measurement.orphanWrapCount * 90 -
+    measurement.wrappedLaneCount * 10 -
+    (measurement.lineCount > 0 ? (measurement.wrappedLaneCount / measurement.lineCount) * 80 : 0)
+  );
 }
 
 function isAcceptableWidth(measurement: DistanceLayoutMeasurement): boolean {
@@ -351,8 +428,11 @@ function compareDistanceLayouts(
   a: DistanceLayoutMeasurement,
   b: DistanceLayoutMeasurement,
 ): number {
+  const wrapDelta = wrapQualityScore(a) - wrapQualityScore(b);
+  if (wrapDelta !== 0) return wrapDelta;
+
   const fontDelta = a.revealedFontSize - b.revealedFontSize;
-  if (fontDelta !== 0) return fontDelta;
+  if (Math.abs(fontDelta) > 2) return fontDelta;
 
   const widthDelta = widthFitScore(a.usedWidthRatio) - widthFitScore(b.usedWidthRatio);
   if (widthDelta !== 0) return widthDelta;
@@ -360,8 +440,7 @@ function compareDistanceLayouts(
   const heightDelta = heightFitScore(a.usedHeightRatio) - heightFitScore(b.usedHeightRatio);
   if (heightDelta !== 0) return heightDelta;
 
-  const wrapDelta = wrapPenalty(a.wrappedLaneCount, a.lineCount) - wrapPenalty(b.wrappedLaneCount, b.lineCount);
-  if (wrapDelta !== 0) return wrapDelta;
+  if (fontDelta !== 0) return fontDelta;
 
   return a.params.columnCount - b.params.columnCount;
 }
@@ -395,7 +474,6 @@ export function pickBestDistanceLayout(
   measure: (params: DistanceLayoutParams, columns: LyricSheetColumn[]) => DistanceLayoutMeasurement,
 ): DistanceLayoutPick {
   const sections = buildLyricSections(lines);
-  const lineCount = countLyricLines(sections);
   const valid: DistanceLayoutMeasurement[] = [];
   const columnsByCount = new Map<number, LyricSheetColumn[]>();
 
@@ -444,3 +522,5 @@ export function summarizeSheetColumns(columns: LyricSheetColumn[]) {
     maxTokensPerLine: lineCounts.length > 0 ? Math.max(...lineCounts) : 0,
   };
 }
+
+export { MIN_CONTINUATION_UNITS };

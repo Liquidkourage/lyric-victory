@@ -5,8 +5,10 @@ import { flushSync } from "react-dom";
 import {
   buildLayoutParams,
   buildLyricSections,
+  computeColumnWidth,
   distributeSectionsToColumns,
   isPunctuationToken,
+  packTokensIntoRows,
   pickBestDistanceLayout,
   summarizeSheetColumns,
   toDebugInfo,
@@ -86,6 +88,33 @@ function renderLaneToken(token: PublicToken, key: string) {
   );
 }
 
+function LyricLineBlock({
+  tokens,
+  columnWidthPx,
+  params,
+}: {
+  tokens: PublicToken[];
+  columnWidthPx: number;
+  params: DistanceLayoutParams;
+}) {
+  const rows = packTokensIntoRows(tokens, columnWidthPx, params);
+
+  return (
+    <div className="tv-distance-lane">
+      {rows.map((rowTokens, rowIndex) => (
+        <div
+          key={`row-${rowIndex}`}
+          className={`tv-distance-line-row${rowIndex > 0 ? " tv-distance-line-row--cont" : ""}`}
+        >
+          {rowTokens.map((token, tokenIndex) =>
+            renderLaneToken(token, `row-${rowIndex}-t-${tokenIndex}`),
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function applyLayoutStyles(
   sheet: HTMLElement,
   params: DistanceLayoutParams,
@@ -106,27 +135,43 @@ function applyLayoutStyles(
   sheet.style.maxHeight = `${viewportHeight}px`;
 }
 
-function measureLaneStats(sheet: HTMLElement, lineHeightPx: number) {
+function measureLaneStats(sheet: HTMLElement) {
   const lanes = sheet.querySelectorAll<HTMLElement>(".tv-distance-lane");
   const tokenCounts: number[] = [];
   let wrappedLaneCount = 0;
+  let orphanWrapCount = 0;
 
   for (const lane of lanes) {
+    const rows = lane.querySelectorAll<HTMLElement>(".tv-distance-line-row");
     let units = 0;
-    for (const child of lane.children) {
-      if (child.classList.contains("tv-distance-punct")) continue;
-      units += 1;
+
+    for (const row of rows) {
+      for (const child of row.children) {
+        if (child.classList.contains("tv-distance-punct")) continue;
+        units += 1;
+      }
     }
+
     if (units > 0) tokenCounts.push(units);
 
-    if (lane.getBoundingClientRect().height > lineHeightPx * 1.35) {
+    if (rows.length > 1) {
       wrappedLaneCount += 1;
+      const lastRow = rows[rows.length - 1];
+      if (lastRow) {
+        let lastRowUnits = 0;
+        for (const child of lastRow.children) {
+          if (child.classList.contains("tv-distance-punct")) continue;
+          lastRowUnits += 1;
+        }
+        if (lastRowUnits <= 2) orphanWrapCount += 1;
+      }
     }
   }
 
   const total = tokenCounts.reduce((sum, count) => sum + count, 0);
   return {
     wrappedLaneCount,
+    orphanWrapCount,
     avgTokensPerLine: tokenCounts.length > 0 ? total / tokenCounts.length : 0,
     maxTokensPerLine: tokenCounts.length > 0 ? Math.max(...tokenCounts) : 0,
     lineCount: tokenCounts.length,
@@ -162,7 +207,7 @@ function measureLayout(
   const { contentScrollHeight, contentScrollWidth } = measureContentExtent(sheet, viewportWidth);
   const overflowY = Math.max(0, contentScrollHeight - viewportHeight);
   const overflowX = Math.max(0, contentScrollWidth - viewportWidth);
-  const laneStats = measureLaneStats(sheet, params.revealedFontSize * 1.12);
+  const laneStats = measureLaneStats(sheet);
   const sheetSummary = summarizeSheetColumns(columns);
 
   return {
@@ -179,6 +224,7 @@ function measureLayout(
     lineCount: laneStats.lineCount || sheetSummary.lineCount,
     sectionCount: sheetSummary.sectionCount,
     wrappedLaneCount: laneStats.wrappedLaneCount,
+    orphanWrapCount: laneStats.orphanWrapCount,
     avgTokensPerLine: laneStats.avgTokensPerLine || sheetSummary.avgTokensPerLine,
     maxTokensPerLine: laneStats.maxTokensPerLine || sheetSummary.maxTokensPerLine,
   };
@@ -190,10 +236,8 @@ function LayoutDebugOverlay({ debug }: { debug: DistanceLayoutDebugInfo }) {
       <div>columns: {debug.columns}</div>
       <div>revealedFontSize: {debug.revealedFontSize}px</div>
       <div>lines: {debug.lineCount}</div>
-      <div>sections: {debug.sectionCount}</div>
       <div>wrappedLanes: {debug.wrappedLaneCount}</div>
-      <div>avgTokensPerLine: {debug.avgTokensPerLine.toFixed(1)}</div>
-      <div>maxTokensPerLine: {debug.maxTokensPerLine}</div>
+      <div>orphanWraps: {debug.orphanWrapCount}</div>
       <div>usedHeightRatio: {debug.usedHeightRatio.toFixed(3)}</div>
       <div>usedWidthRatio: {debug.usedWidthRatio.toFixed(3)}</div>
       <div>overflowX: {Math.round(debug.overflowX)}</div>
@@ -205,14 +249,14 @@ function LayoutDebugOverlay({ debug }: { debug: DistanceLayoutDebugInfo }) {
 function LyricSheet({
   columns,
   columnCount,
-  globalLaneOffset = 0,
+  columnWidthPx,
+  params,
 }: {
   columns: LyricSheetColumn[];
   columnCount: number;
-  globalLaneOffset?: number;
+  columnWidthPx: number;
+  params: DistanceLayoutParams;
 }) {
-  let laneIndex = globalLaneOffset;
-
   return (
     <>
       {Array.from({ length: columnCount }, (_, columnIndex) => {
@@ -229,21 +273,14 @@ function LyricSheet({
                     key={`stanza-${columnIndex}-${sectionIndex}-${stanzaIndex}`}
                     className="tv-distance-stanza"
                   >
-                    {stanza.lines.map((line) => {
-                      const laneKey = `lane-${laneIndex}`;
-                      const alt = laneIndex % 2 === 1;
-                      laneIndex += 1;
-                      return (
-                        <div
-                          key={laneKey}
-                          className={`tv-distance-lane${alt ? " tv-distance-lane--alt" : ""}`}
-                        >
-                          {line.tokens.map((token, tokenIndex) =>
-                            renderLaneToken(token, `${laneKey}-t-${tokenIndex}`),
-                          )}
-                        </div>
-                      );
-                    })}
+                    {stanza.lines.map((line, lineIndex) => (
+                      <LyricLineBlock
+                        key={`line-${columnIndex}-${sectionIndex}-${stanzaIndex}-${lineIndex}`}
+                        tokens={line.tokens}
+                        columnWidthPx={columnWidthPx}
+                        params={params}
+                      />
+                    ))}
                   </div>
                 ))}
               </div>
@@ -268,6 +305,7 @@ export function DistanceLyricBoard({
   const [columns, setColumns] = useState<LyricSheetColumn[]>(() =>
     distributeSectionsToColumns(buildLyricSections(lines), 3),
   );
+  const [columnWidthPx, setColumnWidthPx] = useState(640);
   const [debugInfo, setDebugInfo] = useState<DistanceLayoutDebugInfo | null>(null);
 
   useLayoutEffect(() => {
@@ -281,22 +319,32 @@ export function DistanceLyricBoard({
       if (viewportHeight <= 0 || viewportWidth <= 0) return;
 
       let measuringColumn = -1;
+      let measuringFont = -1;
 
       const result = pickBestDistanceLayout(lines, (params, nextColumns) => {
-        if (params.columnCount !== measuringColumn) {
+        const nextColumnWidth = computeColumnWidth(viewportWidth, params);
+        const layoutChanged =
+          params.columnCount !== measuringColumn || params.revealedFontSize !== measuringFont;
+
+        if (layoutChanged) {
           measuringColumn = params.columnCount;
+          measuringFont = params.revealedFontSize;
           flushSync(() => {
             setColumns(nextColumns);
-            setLayout(buildLayoutParams(params.revealedFontSize, params.columnCount));
+            setLayout(params);
+            setColumnWidthPx(nextColumnWidth);
           });
         }
 
         return measureLayout(sheet, params, nextColumns, viewportHeight, viewportWidth);
       });
 
+      const finalColumnWidth = computeColumnWidth(viewportWidth, result.params);
+
       flushSync(() => {
         setColumns(result.columns);
         setLayout(result.params);
+        setColumnWidthPx(finalColumnWidth);
         setDebugInfo(toDebugInfo(result.measurement));
       });
 
@@ -316,24 +364,13 @@ export function DistanceLyricBoard({
   return (
     <div ref={containerRef} className="tv-distance-board relative min-h-0 w-full flex-1 overflow-hidden">
       {showDebug && debugInfo ? <LayoutDebugOverlay debug={debugInfo} /> : null}
-      <div
-        ref={sheetRef}
-        className="tv-distance-sheet"
-        style={
-          {
-            "--tvd-font": `${layout.revealedFontSize}px`,
-            "--tvd-chip-font": `${layout.chipFontSize}px`,
-            "--tvd-chip-height": `${layout.chipHeight}px`,
-            "--tvd-chip-min": `${layout.chipMinWidth}px`,
-            "--tvd-word-gap": `${layout.wordGap}px`,
-            "--tvd-line-gap": `${layout.lineGap}px`,
-            "--tvd-stanza-gap": `${layout.stanzaGap}px`,
-            "--tvd-column-gap": `${layout.columnGap}px`,
-            "--tvd-columns": layout.columnCount,
-          } as React.CSSProperties
-        }
-      >
-        <LyricSheet columns={columns} columnCount={layout.columnCount} />
+      <div ref={sheetRef} className="tv-distance-sheet">
+        <LyricSheet
+          columns={columns}
+          columnCount={layout.columnCount}
+          columnWidthPx={columnWidthPx}
+          params={layout}
+        />
       </div>
     </div>
   );
