@@ -161,8 +161,8 @@ code {
   overflow: hidden;
   column-fill: auto;
   column-gap: var(--tvd-column-gap, 16px);
-  font-family: var(--font-roboto-condensed), "Roboto Condensed", "Arial Narrow", "Inter Tight", "Archivo Narrow", system-ui, sans-serif;
-  line-height: 1.1;
+  font-family: var(--font-roboto-condensed), "Roboto Condensed", "Archivo Narrow", "Inter Tight", "Arial Narrow", system-ui, sans-serif;
+  line-height: 1.12;
   padding: 0;
 }
 
@@ -173,12 +173,14 @@ code {
   -webkit-column-break-inside: avoid;
   page-break-inside: avoid;
   white-space: nowrap;
-  padding: 2px 4px;
+  padding: 4px 8px;
   margin-bottom: var(--tvd-row-gap, 6px);
+  border-radius: 3px;
 }
 
 .tv-distance-lane--alt {
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.022);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
 }
 
 .tv-distance-lane > * {
@@ -187,13 +189,14 @@ code {
 
 .tv-distance-revealed {
   display: inline;
+  font-family: var(--font-roboto-condensed), "Roboto Condensed", "Archivo Narrow", "Inter Tight", "Arial Narrow", system-ui, sans-serif;
   font-size: var(--tvd-font, 32px);
   font-weight: 900;
   color: #fffdf7;
-  letter-spacing: -0.015em;
+  letter-spacing: -0.012em;
   text-shadow:
     0 1px 0 rgba(0, 0, 0, 1),
-    0 2px 8px rgba(0, 0, 0, 0.92),
+    0 2px 10px rgba(0, 0, 0, 0.9),
     0 0 2px rgba(0, 0, 0, 1);
   vertical-align: baseline;
 }
@@ -215,43 +218,38 @@ code {
 
 .tv-distance-auto {
   display: inline;
+  font-family: var(--font-roboto-condensed), "Roboto Condensed", "Archivo Narrow", "Inter Tight", "Arial Narrow", system-ui, sans-serif;
   font-size: var(--tvd-font, 32px);
   font-weight: 700;
-  color: rgba(214, 201, 182, 0.82);
+  color: rgba(220, 208, 188, 0.88);
   letter-spacing: -0.01em;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+  text-shadow: 0 1px 5px rgba(0, 0, 0, 0.85);
   vertical-align: baseline;
 }
 
-.tv-distance-blank {
-  display: inline-block;
-  position: relative;
-  vertical-align: baseline;
-  font-size: var(--tvd-font, 32px);
-  min-width: calc(var(--tvd-blank-ch, 4) * 0.56em);
-  width: calc(var(--tvd-blank-ch, 4) * 0.56em);
-  height: 1em;
-}
-
-.tv-distance-blank-track {
-  display: block;
-  position: absolute;
-  left: 0.04em;
-  right: 0.04em;
-  bottom: 0.1em;
-  border-bottom: 0.08em solid rgba(255, 248, 235, 0.3);
-}
-
-.tv-distance-blank-count {
-  position: absolute;
-  right: 0;
-  bottom: 0.16em;
-  font-size: 0.36em;
-  font-weight: 700;
+.tv-distance-hidden {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--tvd-chip-min, 34px);
+  width: var(--tvd-chip-min, 34px);
+  height: var(--tvd-chip-height, 30px);
+  padding: 0 2px;
+  font-family: var(--font-roboto-condensed), "Roboto Condensed", "Archivo Narrow", "Inter Tight", "Arial Narrow", system-ui, sans-serif;
+  font-size: var(--tvd-chip-font, 24px);
+  font-weight: 800;
   font-variant-numeric: tabular-nums;
-  color: rgba(255, 248, 235, 0.22);
-  line-height: 1;
-  pointer-events: none;
+  color: #f1d24a;
+  background: rgba(95, 72, 22, 0.88);
+  border: 1px solid rgba(224, 188, 70, 0.35);
+  border-radius: 5px;
+  vertical-align: middle;
+  box-shadow: none;
+}
+
+.tv-distance-hidden--dense {
+  background: rgba(82, 62, 18, 0.92);
+  color: #e8c840;
 }
 
 .tv-distance-punct {
@@ -270,12 +268,13 @@ code {
 
 .tv-distance-text {
   display: inline;
+  font-family: var(--font-roboto-condensed), "Roboto Condensed", "Archivo Narrow", "Inter Tight", "Arial Narrow", system-ui, sans-serif;
   font-size: var(--tvd-font, 32px);
   font-weight: 900;
   color: #fffdf7;
   text-shadow:
     0 1px 0 rgba(0, 0, 0, 1),
-    0 2px 8px rgba(0, 0, 0, 0.9);
+    0 2px 10px rgba(0, 0, 0, 0.9);
 }
 
 .display-distance-hud {

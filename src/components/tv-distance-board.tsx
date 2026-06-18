@@ -16,17 +16,13 @@ import {
 } from "@/lib/tv-distance-layout";
 import type { PublicLine, PublicToken } from "@/lib/types";
 
-function DistanceHiddenBlank({ length }: { length: number }) {
+function DistanceHiddenChip({ length, dense }: { length: number; dense: boolean }) {
   return (
     <span
-      className="tv-distance-blank"
-      style={{ "--tvd-blank-ch": length } as React.CSSProperties}
+      className={`tv-distance-hidden${dense ? " tv-distance-hidden--dense" : ""}`}
       aria-label={`${length} letter blank`}
     >
-      <span className="tv-distance-blank-track" aria-hidden />
-      <span className="tv-distance-blank-count" aria-hidden>
-        {length}
-      </span>
+      {length}
     </span>
   );
 }
@@ -81,7 +77,7 @@ function renderFlowToken(token: PublicToken, key: string, dense: boolean) {
         />
       );
     }
-    return <DistanceHiddenBlank key={key} length={token.length} />;
+    return <DistanceHiddenChip key={key} length={token.length} dense={dense} />;
   }
 
   if (isPunctuationToken(token)) {
@@ -102,6 +98,9 @@ function applyLayoutStyles(
   viewportWidth: number,
 ) {
   flow.style.setProperty("--tvd-font", `${params.revealedFontSize}px`);
+  flow.style.setProperty("--tvd-chip-font", `${params.chipFontSize}px`);
+  flow.style.setProperty("--tvd-chip-height", `${params.chipHeight}px`);
+  flow.style.setProperty("--tvd-chip-min", `${params.chipMinWidth}px`);
   flow.style.setProperty("--tvd-word-gap", `${params.wordGap}px`);
   flow.style.setProperty("--tvd-row-gap", `${params.rowGap}px`);
   flow.style.setProperty("--tvd-column-gap", `${params.columnGap}px`);
@@ -121,7 +120,6 @@ function measureLaneTokenCounts(flow: HTMLElement) {
     let units = 0;
     for (const child of lane.children) {
       if (child.classList.contains("tv-distance-punct")) continue;
-      if (child.classList.contains("tv-distance-blank-count")) continue;
       units += 1;
     }
     if (units > 0) counts.push(units);
@@ -211,10 +209,10 @@ export function DistanceLyricBoard({
   const containerRef = useRef<HTMLDivElement>(null);
   const flowRef = useRef<HTMLDivElement>(null);
   const [layout, setLayout] = useState<DistanceLayoutParams>(() =>
-    buildLayoutParams(36, 4, false),
+    buildLayoutParams(36, 3, false),
   );
   const [phraseLines, setPhraseLines] = useState<DistancePhraseLine[]>(() =>
-    buildDistancePhraseLines(lines, 4),
+    buildDistancePhraseLines(lines, 3),
   );
   const [debugInfo, setDebugInfo] = useState<DistanceLayoutDebugInfo | null>(null);
 
@@ -273,6 +271,9 @@ export function DistanceLyricBoard({
         style={
           {
             "--tvd-font": `${layout.revealedFontSize}px`,
+            "--tvd-chip-font": `${layout.chipFontSize}px`,
+            "--tvd-chip-height": `${layout.chipHeight}px`,
+            "--tvd-chip-min": `${layout.chipMinWidth}px`,
             "--tvd-word-gap": `${layout.wordGap}px`,
             "--tvd-row-gap": `${layout.rowGap}px`,
             "--tvd-column-gap": `${layout.columnGap}px`,

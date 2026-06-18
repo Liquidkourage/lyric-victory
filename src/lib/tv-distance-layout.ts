@@ -126,17 +126,16 @@ export interface DistanceLayoutParams {
   wordGap: number;
   rowGap: number;
   columnGap: number;
-}
-
-/** Width in em units for a hidden blank, matched to revealed-word typography. */
-export function blankWidthEm(charCount: number): number {
-  return Math.max(1.6, charCount * 0.56);
+  chipHeight: number;
+  chipFontSize: number;
+  chipMinWidth: number;
 }
 
 export const DISTANCE_FONT_MAX = 56;
 export const DISTANCE_FONT_MIN = 26;
 export const DISTANCE_COLUMN_MIN = 2;
 export const DISTANCE_COLUMN_MAX = 5;
+export const DISTANCE_FONT_TIE_EPSILON = 3;
 
 export const TARGET_HEIGHT_RATIO = 0.895;
 export const TARGET_WIDTH_RATIO = 0.94;
@@ -153,6 +152,9 @@ export function gapsForRevealedFontSize(revealedFontSize: number, dense = false)
     wordGap: Math.min(12, Math.max(4, revealedFontSize * 0.18 * scale)),
     rowGap: Math.min(14, Math.max(4, revealedFontSize * 0.2 * scale)),
     columnGap: Math.min(28, Math.max(10, revealedFontSize * 0.35 * scale)),
+    chipHeight: revealedFontSize * 1.08,
+    chipFontSize: revealedFontSize * 0.78,
+    chipMinWidth: revealedFontSize * 1.22,
   };
 }
 
@@ -254,9 +256,10 @@ function widthFitScore(usedWidthRatio: number): number {
 }
 
 function columnPreferenceScore(columnCount: number): number {
-  if (columnCount === 3 || columnCount === 4) return 28;
-  if (columnCount === 5) return 8;
-  if (columnCount === 2) return -22;
+  if (columnCount === 3) return 36;
+  if (columnCount === 4) return 32;
+  if (columnCount === 5) return 10;
+  if (columnCount === 2) return -32;
   return 0;
 }
 
@@ -264,8 +267,9 @@ function compareDistanceLayouts(
   a: DistanceLayoutMeasurement,
   b: DistanceLayoutMeasurement,
 ): number {
-  if (a.revealedFontSize !== b.revealedFontSize) {
-    return a.revealedFontSize - b.revealedFontSize;
+  const fontDelta = a.revealedFontSize - b.revealedFontSize;
+  if (Math.abs(fontDelta) > DISTANCE_FONT_TIE_EPSILON) {
+    return fontDelta;
   }
 
   const lineDelta =
@@ -273,7 +277,8 @@ function compareDistanceLayouts(
     lineLengthScore(b.maxTokensPerLine, b.avgTokensPerLine);
   if (lineDelta !== 0) return lineDelta;
 
-  const columnDelta = columnPreferenceScore(a.params.columnCount) - columnPreferenceScore(b.params.columnCount);
+  const columnDelta =
+    columnPreferenceScore(a.params.columnCount) - columnPreferenceScore(b.params.columnCount);
   if (columnDelta !== 0) return columnDelta;
 
   const heightDelta = heightFitScore(a.usedHeightRatio) - heightFitScore(b.usedHeightRatio);
@@ -281,6 +286,8 @@ function compareDistanceLayouts(
 
   const widthDelta = widthFitScore(a.usedWidthRatio) - widthFitScore(b.usedWidthRatio);
   if (widthDelta !== 0) return widthDelta;
+
+  if (fontDelta !== 0) return fontDelta;
 
   return b.params.columnCount - a.params.columnCount;
 }
@@ -320,7 +327,7 @@ export function pickBestDistanceLayout(
   }
 
   if (valid.length === 0) {
-    const columnCount = 4;
+    const columnCount = 3;
     const phrases = buildDistancePhraseLines(lines, columnCount);
     const fallback = measure(buildLayoutParams(DISTANCE_FONT_MIN, columnCount, true), phrases);
     return {
