@@ -340,6 +340,29 @@ code {
   animation: none;
 }
 
+.display-score-miss {
+  animation: display-score-miss-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) both,
+    display-score-miss-out 0.45s ease-in 2.1s forwards;
+}
+
+@keyframes display-score-miss-in {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes display-score-miss-out {
+  to {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
 @keyframes display-score-pop-in {
   0% {
     opacity: 0;

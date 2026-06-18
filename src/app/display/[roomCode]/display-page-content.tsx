@@ -10,6 +10,7 @@ import { usePublicGame } from "@/hooks/useGameSocket";
 import { FREE_FOR_ALL_MS } from "@/lib/game-constants";
 import { groupWordGuessEntries } from "@/lib/guess-events";
 import { getBlankProgress } from "@/lib/round-progress";
+import type { Player } from "@/lib/types";
 
 const robotoCondensed = Roboto_Condensed({
   subsets: ["latin"],
@@ -38,8 +39,32 @@ function formatHudPhaseLabel(announcement: string | null | undefined, phaseLabel
   return phaseLabel;
 }
 
+function formatRoundLabel(roundNumber: number, totalRounds: number): string {
+  if (roundNumber <= 0) return "Round —";
+  if (totalRounds > 0) return `Round ${roundNumber} of ${totalRounds}`;
+  return `Round ${roundNumber}`;
+}
+
+function HudStandings({ players }: { players: Player[] }) {
+  const top = players.filter((player) => player.score > 0).slice(0, 3);
+  if (top.length === 0) return null;
+
+  return (
+    <div className="display-hud-standings max-w-[min(34vw,420px)] shrink-0 truncate text-base font-bold text-white/75">
+      {top.map((player, index) => (
+        <span key={player.id}>
+          {index > 0 ? <span className="mx-2 text-white/25">·</span> : null}
+          <span className={index === 0 ? "text-white" : undefined}>{player.displayName}</span>
+          <span className="ml-1 tabular-nums text-[#fde047]/90">{player.score}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function DisplayDistanceHud({
   roundNumber,
+  totalRounds,
   phaseLabel,
   revealed,
   hidden,
@@ -47,8 +72,10 @@ function DisplayDistanceHud({
   connected,
   showWordRushTimer,
   phaseEndsAt,
+  topPlayers,
 }: {
   roundNumber: number;
+  totalRounds: number;
   phaseLabel: string;
   revealed: number;
   hidden: number;
@@ -56,11 +83,12 @@ function DisplayDistanceHud({
   connected: boolean;
   showWordRushTimer: boolean;
   phaseEndsAt: number | null;
+  topPlayers: Player[];
 }) {
   return (
     <header className="display-distance-hud flex shrink-0 items-center gap-3 px-4 py-1.5">
       <div className="min-w-0 flex-1 truncate text-lg font-black tracking-tight text-white">
-        <span>Round {roundNumber}</span>
+        <span>{formatRoundLabel(roundNumber, totalRounds)}</span>
         <span className="mx-2 text-white/35">·</span>
         <span className="text-[#fde047]">{phaseLabel}</span>
         <span className="mx-2 text-white/35">·</span>
@@ -70,8 +98,9 @@ function DisplayDistanceHud({
         <span className="mx-2 text-white/35">·</span>
         <span>{percent}%</span>
       </div>
+      <HudStandings players={topPlayers} />
       {showWordRushTimer && phaseEndsAt ? (
-        <div className="hidden shrink-0 sm:block">
+        <div className="shrink-0">
           <PhaseCountdown
             label="Word rush"
             active
@@ -83,41 +112,6 @@ function DisplayDistanceHud({
       ) : null}
       <ConnectionPill connected={connected} />
     </header>
-  );
-}
-
-function DisplayDistanceTicker({
-  leader,
-  recentGuesses,
-}: {
-  leader: { name: string; score: number } | null;
-  recentGuesses: ReturnType<typeof groupWordGuessEntries>;
-}) {
-  const items: string[] = [];
-
-  if (leader) {
-    items.push(`Leader: ${leader.name} — ${leader.score}`);
-  }
-
-  for (const guess of recentGuesses.slice(0, 4)) {
-    items.push(`${guess.playerName} → ${guess.word}`);
-  }
-
-  if (items.length === 0) {
-    return null;
-  }
-
-  return (
-    <footer className="display-distance-ticker shrink-0 overflow-hidden px-4 py-1.5">
-      <p className="truncate text-base font-bold text-white/85">
-        {items.map((item, index) => (
-          <span key={item}>
-            {index > 0 ? <span className="mx-3 text-white/30">|</span> : null}
-            {item}
-          </span>
-        ))}
-      </p>
-    </footer>
   );
 }
 
@@ -156,9 +150,9 @@ export default function DisplayPageContent() {
       ? Math.round((blankProgress.revealedBlanks / blankProgress.totalBlanks) * 100)
       : 0;
   const roundNumber = state && state.currentRoundIndex >= 0 ? state.currentRoundIndex + 1 : 0;
+  const totalRounds = state?.totalRounds ?? 0;
   const roundLabel =
     state && state.currentRoundIndex >= 0 ? `Round ${state.currentRoundIndex + 1}` : "Waiting for host";
-  const leader = sortedPlayers.find((player) => player.score > 0) ?? null;
   const showLayoutDebug =
     process.env.NODE_ENV === "development" || searchParams.get("debugLayout") === "1";
   const hudPhaseLabel = formatHudPhaseLabel(state?.announcement, phaseLabel);
@@ -169,6 +163,7 @@ export default function DisplayPageContent() {
         <>
           <DisplayDistanceHud
             roundNumber={roundNumber}
+            totalRounds={totalRounds}
             phaseLabel={hudPhaseLabel}
             revealed={blankProgress.revealedBlanks}
             hidden={blankProgress.hiddenBlanks}
@@ -176,6 +171,7 @@ export default function DisplayPageContent() {
             connected={connected}
             showWordRushTimer={showWordRushTimer}
             phaseEndsAt={state?.phaseEndsAt ?? null}
+            topPlayers={sortedPlayers}
           />
 
           {error ? (
@@ -197,11 +193,6 @@ export default function DisplayPageContent() {
           </main>
 
           <DisplayScoreFeed recentWordGuesses={recentWordGuesses} roundKey={roundNumber} />
-
-          <DisplayDistanceTicker
-            leader={leader ? { name: leader.displayName, score: leader.score } : null}
-            recentGuesses={recentWordGuesses}
-          />
         </>
       ) : (
         <main className="relative flex h-full min-h-0 flex-col px-6 py-5">

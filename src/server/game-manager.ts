@@ -9,7 +9,7 @@ import {
   titlesMatch,
 } from "../lib/lyrics";
 import { INCREDIBLY_COMMON_WORDS } from "../lib/common-words";
-import { FREE_FOR_ALL_MS, WORD_GUESS_COOLDOWN_MS } from "../lib/game-constants";
+import { FREE_FOR_ALL_MS, PUBLIC_RECENT_WORD_GUESS_LIMIT, WORD_GUESS_COOLDOWN_MS } from "../lib/game-constants";
 import { generateRoomCode, normalizeRoomCode } from "../lib/room-code";
 import { getWordGuessPointValues } from "../lib/lyric-scoring";
 import type {
@@ -605,7 +605,7 @@ export class GameManager {
         points: 0,
         submittedAt,
       });
-      room.recentWordGuesses = room.recentWordGuesses.slice(0, 12);
+      room.recentWordGuesses = room.recentWordGuesses.slice(0, PUBLIC_RECENT_WORD_GUESS_LIMIT);
       return { accepted: false, points: 0, count: 0 };
     }
 
@@ -633,7 +633,7 @@ export class GameManager {
     });
 
     player.score += totalPoints;
-    room.recentWordGuesses = room.recentWordGuesses.slice(0, 12);
+    room.recentWordGuesses = room.recentWordGuesses.slice(0, PUBLIC_RECENT_WORD_GUESS_LIMIT);
     room.announcement =
       totalPoints > 0
         ? `${player.displayName} found ${word.toUpperCase()} for ${totalPoints} points!`

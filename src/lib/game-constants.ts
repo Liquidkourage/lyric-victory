@@ -1,2 +1,3 @@
 export const WORD_GUESS_COOLDOWN_MS = 10_000;
 export const FREE_FOR_ALL_MS = 60_000;
+export const PUBLIC_RECENT_WORD_GUESS_LIMIT = 24;
