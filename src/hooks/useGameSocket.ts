@@ -287,6 +287,10 @@ function storeHostToken(code: string, hostToken: string) {
   sessionStorage.setItem(`lv-host-${code}`, hostToken);
 }
 
+export function rememberHostToken(code: string, hostToken: string) {
+  storeHostToken(code, hostToken);
+}
+
 export function createRoom(): Promise<{ code: string; hostToken: string }> {
   return new Promise((resolve, reject) => {
     const client = getSocket();

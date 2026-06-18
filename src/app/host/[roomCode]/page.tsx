@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { AutoRevealTuner } from "@/components/auto-reveal-tuner";
@@ -14,14 +14,24 @@ import {
   RoomCodeBadge,
   SecondaryButton,
 } from "@/components/game-ui";
-import { getStoredHostToken, useHostGame } from "@/hooks/useGameSocket";
+import { getStoredHostToken, rememberHostToken, useHostGame } from "@/hooks/useGameSocket";
 import { groupWordGuessEntries } from "@/lib/guess-events";
 import type { SongSearchResult } from "@/lib/types";
 
 export default function HostRoomPage() {
   const params = useParams<{ roomCode: string }>();
   const roomCode = params.roomCode.toUpperCase();
-  const hostToken = useMemo(() => getStoredHostToken(roomCode), [roomCode]);
+  const [hostToken, setHostToken] = useState<string | null>(null);
+
+  useEffect(() => {
+    const urlToken = new URL(window.location.href).searchParams.get("hostToken");
+    if (urlToken) {
+      rememberHostToken(roomCode, urlToken);
+      setHostToken(urlToken);
+      return;
+    }
+    setHostToken(getStoredHostToken(roomCode));
+  }, [roomCode]);
   const {
     state,
     connected,
@@ -98,13 +108,26 @@ export default function HostRoomPage() {
     }
   };
 
+  if (hostToken === null) {
+    return (
+      <MusicBackdrop>
+        <main className="mx-auto max-w-lg px-6 py-16">
+          <Panel title="Loading host session…">
+            <p className="text-sm text-[#c4b5a0]">Reconnecting to your room…</p>
+          </Panel>
+        </main>
+      </MusicBackdrop>
+    );
+  }
+
   if (!hostToken) {
     return (
       <MusicBackdrop>
         <main className="mx-auto max-w-lg px-6 py-16">
           <Panel title="Host session expired">
             <p className="mb-4 text-sm text-[#c4b5a0]">
-              Open this room from the same browser that created it, or start a new game.
+              Open the host link from the browser that created the room, or start a new game. After
+              a deploy, rooms only survive if Railway has a volume mounted at <code>/data</code>.
             </p>
             <Link href="/host">
               <PrimaryButton>Create New Game</PrimaryButton>

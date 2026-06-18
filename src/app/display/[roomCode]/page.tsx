@@ -183,7 +183,15 @@ export default function DisplayPage() {
           />
 
           {error ? (
-            <div className="shrink-0 bg-red-900 px-4 py-2 text-lg font-bold text-white">{error}</div>
+            <div className="shrink-0 bg-red-900 px-4 py-3 text-xl font-bold text-white">
+              {error}
+              {error.toLowerCase().includes("room") ? (
+                <span className="mt-1 block text-base font-semibold text-white/80">
+                  The server may have redeployed without a persistent volume. Create a new room from
+                  /host, or mount a Railway volume at /data.
+                </span>
+              ) : null}
+            </div>
           ) : null}
 
           <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden px-2 py-1">

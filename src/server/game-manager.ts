@@ -23,7 +23,8 @@ import type {
   SongGuessEntry,
   WordGuessEntry,
 } from "../lib/types";
-import { loadRoomSnapshot, saveRoomSnapshot, type PersistedRoom } from "./room-store";
+import { loadRoomSnapshot, saveRoomSnapshot, getRoomStorePath, getRoomStoreStatus, type PersistedRoom } from "./room-store";
+import { getGameManager, setGameManager } from "./game-manager-instance";
 
 const ROOM_TTL_MS = 24 * 60 * 60 * 1000;
 interface InternalRoom {
@@ -53,12 +54,29 @@ export class GameManager {
   private persistTimer: NodeJS.Timeout | null = null;
 
   constructor(private io: Server) {
-    for (const room of loadRoomSnapshot().map((snapshot) => this.hydrateRoom(snapshot))) {
+    const storePath = getRoomStorePath();
+    const snapshots = loadRoomSnapshot();
+    for (const room of snapshots.map((snapshot) => this.hydrateRoom(snapshot))) {
       this.rooms.set(room.code, room);
       this.restoreRoomTimers(room);
     }
 
+    console.log(
+      `[rooms] loaded ${this.rooms.size} room(s) from ${storePath}` +
+        (this.rooms.size === 0 && snapshots.length === 0
+          ? " (attach a Railway volume at /data for deploy survival)"
+          : ""),
+    );
+
     setInterval(() => this.pruneRooms(), 60 * 60 * 1000);
+  }
+
+  getStatus() {
+    return {
+      activeRooms: this.rooms.size,
+      roomCodes: [...this.rooms.keys()],
+      ...getRoomStoreStatus(),
+    };
   }
 
   registerHandlers(socket: Socket) {
@@ -90,6 +108,7 @@ export class GameManager {
       socket.join(code);
       callback({ code, hostToken });
       this.broadcast(code);
+      this.flushPersist();
     });
 
     socket.on("host:rejoin", ({ code, hostToken }, callback) => {

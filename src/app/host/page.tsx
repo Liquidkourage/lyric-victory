@@ -19,8 +19,8 @@ export default function HostLandingPage() {
     setLoading(true);
     setError(null);
     try {
-      const { code } = await createRoom();
-      router.push(`/host/${code}`);
+      const { code, hostToken } = await createRoom();
+      router.push(`/host/${code}?hostToken=${encodeURIComponent(hostToken)}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not create room.");
       setLoading(false);

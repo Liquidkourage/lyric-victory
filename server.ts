@@ -3,6 +3,7 @@ import next from "next";
 import { parse } from "url";
 import { Server } from "socket.io";
 import { GameManager } from "./src/server/game-manager";
+import { setGameManager } from "./src/server/game-manager-instance";
 
 const dev = process.env.NODE_ENV !== "production";
 const port = Number(process.env.PORT ?? 3000);
@@ -25,6 +26,7 @@ app
     });
 
     const gameManager = new GameManager(io);
+    setGameManager(gameManager);
 
     io.on("connection", (socket) => {
       gameManager.registerHandlers(socket);
