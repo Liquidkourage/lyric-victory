@@ -194,42 +194,47 @@ code {
 .tv-distance-stanza {
   display: flex;
   flex-direction: column;
-  gap: var(--tvd-line-gap, 7px);
+  gap: var(--tvd-line-gap, 9px);
 }
 
 .tv-distance-lane {
   display: block;
   width: 100%;
-  padding: 5px 10px;
+  padding: 6px 10px;
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.022);
+  background: rgba(255, 255, 255, 0.024);
   box-sizing: border-box;
+}
+
+.tv-distance-lane--wrapped {
+  padding-top: 5px;
+  padding-bottom: 5px;
 }
 
 .tv-distance-line-row {
   display: flex;
   flex-wrap: nowrap;
   align-items: baseline;
-  gap: var(--tvd-word-gap, 4px);
+  gap: var(--tvd-line-word-gap, var(--tvd-word-gap, 4px));
   width: 100%;
 }
 
 .tv-distance-line-row--cont {
-  margin-top: 3px;
-  padding-left: 1.1em;
+  margin-top: var(--tvd-cont-gap, 2px);
+  padding-left: 1.15em;
 }
 
 .tv-distance-revealed {
   display: inline;
   font-family: var(--font-roboto-condensed), "Roboto Condensed", "Archivo Narrow", "Inter Tight", "Arial Narrow", system-ui, sans-serif;
-  font-size: var(--tvd-font, 32px);
+  font-size: calc(var(--tvd-font, 32px) * var(--tvd-line-font-scale, 1));
   font-weight: 900;
-  color: #fffef8;
-  letter-spacing: -0.01em;
-  line-height: 1.14;
+  color: #ffffff;
+  letter-spacing: -0.008em;
+  line-height: 1.12;
   text-shadow:
     0 1px 0 rgba(0, 0, 0, 1),
-    0 2px 12px rgba(0, 0, 0, 0.92),
+    0 2px 14px rgba(0, 0, 0, 0.94),
     0 0 2px rgba(0, 0, 0, 1);
   vertical-align: baseline;
 }
@@ -252,9 +257,9 @@ code {
 .tv-distance-auto {
   display: inline;
   font-family: var(--font-roboto-condensed), "Roboto Condensed", "Archivo Narrow", "Inter Tight", "Arial Narrow", system-ui, sans-serif;
-  font-size: var(--tvd-font, 32px);
+  font-size: calc(var(--tvd-font, 32px) * var(--tvd-line-font-scale, 1));
   font-weight: 700;
-  color: rgba(220, 208, 188, 0.88);
+  color: rgba(228, 216, 196, 0.9);
   letter-spacing: -0.01em;
   text-shadow: 0 1px 5px rgba(0, 0, 0, 0.85);
   vertical-align: baseline;
@@ -264,12 +269,12 @@ code {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: var(--tvd-chip-min, 34px);
-  width: var(--tvd-chip-min, 34px);
-  height: var(--tvd-chip-height, 30px);
+  min-width: calc(var(--tvd-chip-min, 34px) * var(--tvd-line-font-scale, 1));
+  width: calc(var(--tvd-chip-min, 34px) * var(--tvd-line-font-scale, 1));
+  height: calc(var(--tvd-chip-height, 30px) * var(--tvd-line-font-scale, 1));
   padding: 0 2px;
   font-family: var(--font-roboto-condensed), "Roboto Condensed", "Archivo Narrow", "Inter Tight", "Arial Narrow", system-ui, sans-serif;
-  font-size: var(--tvd-chip-font, 24px);
+  font-size: calc(var(--tvd-chip-font, 22px) * var(--tvd-line-font-scale, 1));
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   color: #f1d24a;
@@ -287,7 +292,7 @@ code {
 
 .tv-distance-punct {
   display: inline;
-  font-size: calc(var(--tvd-font, 32px) * 0.58);
+  font-size: calc(var(--tvd-font, 32px) * var(--tvd-line-font-scale, 1) * 0.58);
   font-weight: 700;
   color: rgba(255, 255, 255, 0.42);
   letter-spacing: -0.04em;
@@ -302,13 +307,13 @@ code {
 .tv-distance-text {
   display: inline;
   font-family: var(--font-roboto-condensed), "Roboto Condensed", "Archivo Narrow", "Inter Tight", "Arial Narrow", system-ui, sans-serif;
-  font-size: var(--tvd-font, 32px);
+  font-size: calc(var(--tvd-font, 32px) * var(--tvd-line-font-scale, 1));
   font-weight: 900;
-  color: #fffef8;
-  line-height: 1.14;
+  color: #ffffff;
+  line-height: 1.12;
   text-shadow:
     0 1px 0 rgba(0, 0, 0, 1),
-    0 2px 12px rgba(0, 0, 0, 0.92);
+    0 2px 14px rgba(0, 0, 0, 0.94);
 }
 
 .display-distance-hud {

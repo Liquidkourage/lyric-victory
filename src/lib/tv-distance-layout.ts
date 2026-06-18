@@ -5,7 +5,6 @@ const LINE_BREAK_MARKER = "/";
 const SHORT_SONG_LINE_COUNT = 14;
 const MIN_WIDTH_RATIO = 0.7;
 const TARGET_MIN_WIDTH_RATIO = 0.85;
-const MIN_CONTINUATION_UNITS = 3;
 
 const SECTION_LABEL_PATTERN =
   /^\[?\s*(verse|chorus|bridge|intro|outro|pre-?chorus|hook|refrain|interlude|part)\s*\d*\]?\s*$/i;
@@ -33,6 +32,7 @@ export interface DistanceLayoutParams {
   revealedFontSize: number;
   columnCount: number;
   wordGap: number;
+  continuationGap: number;
   lineGap: number;
   stanzaGap: number;
   columnGap: number;
@@ -40,6 +40,16 @@ export interface DistanceLayoutParams {
   chipFontSize: number;
   chipMinWidth: number;
 }
+
+export interface LinePackResult {
+  rows: PublicToken[][];
+  wordGapScale: number;
+  fontScale: number;
+  widthBoostPx: number;
+  wrapped: boolean;
+}
+
+const MAX_ORPHAN_UNITS = 3;
 
 export const DISTANCE_FONT_MAX = 56;
 export const DISTANCE_FONT_MIN = 26;
@@ -265,71 +275,90 @@ export function computeColumnWidth(viewportWidth: number, params: DistanceLayout
   return Math.max(120, (viewportWidth - horizontalPadding - gaps) / params.columnCount);
 }
 
-export function estimateTokenWidthPx(token: PublicToken, params: DistanceLayoutParams): number {
-  if (isPunctuationToken(token)) return params.revealedFontSize * 0.34;
+export function estimateTokenWidthPx(
+  token: PublicToken,
+  params: DistanceLayoutParams,
+  fontScale = 1,
+): number {
+  const fontSize = params.revealedFontSize * fontScale;
+  const chipWidth = params.chipMinWidth * fontScale;
+
+  if (isPunctuationToken(token)) return fontSize * 0.34;
 
   if (token.type === "blank") {
     if (token.revealed && token.answer) {
-      return Math.max(params.chipMinWidth, token.answer.length * params.revealedFontSize * 0.5);
+      return Math.max(chipWidth, token.answer.length * fontSize * 0.5);
     }
-    return params.chipMinWidth;
+    return chipWidth;
   }
 
-  return Math.max(params.revealedFontSize * 0.45, token.value.length * params.revealedFontSize * 0.5);
+  return Math.max(fontSize * 0.45, token.value.length * fontSize * 0.5);
 }
 
-function countRowUnits(tokens: PublicToken[]): number {
+function rowWidthPx(
+  tokens: PublicToken[],
+  params: DistanceLayoutParams,
+  wordGapScale: number,
+  fontScale: number,
+): number {
+  const gap = params.wordGap * wordGapScale;
+  return tokens.reduce(
+    (sum, token) => sum + estimateTokenWidthPx(token, params, fontScale) + gap,
+    0,
+  );
+}
+
+function continuationUnits(tokens: PublicToken[]): number {
   return countLineUnits(tokens);
 }
 
-/** Pack one lyric line into 1–2 balanced rows for its column width. */
-export function packTokensIntoRows(
+function splitScore(
+  first: PublicToken[],
+  second: PublicToken[],
+  columnWidthPx: number,
+  params: DistanceLayoutParams,
+  wordGapScale: number,
+  fontScale: number,
+): number {
+  const firstUnits = countLineUnits(first);
+  const secondUnits = countLineUnits(second);
+  if (secondUnits === 0) return Number.NEGATIVE_INFINITY;
+
+  let score = 0;
+  const totalUnits = firstUnits + secondUnits;
+  const balance = totalUnits > 0 ? Math.abs(firstUnits - secondUnits) / totalUnits : 1;
+  score -= balance * 80;
+
+  if (secondUnits <= MAX_ORPHAN_UNITS) {
+    score -= 200 + (MAX_ORPHAN_UNITS - secondUnits + 1) * 35;
+  }
+  if (firstUnits <= 2 && secondUnits > MAX_ORPHAN_UNITS) score -= 50;
+
+  const firstWidth = rowWidthPx(first, params, wordGapScale, fontScale);
+  const secondWidth = rowWidthPx(second, params, wordGapScale, fontScale);
+
+  if (firstWidth <= columnWidthPx * 1.04) score += 24;
+  if (secondWidth <= columnWidthPx * 1.04) score += 24;
+  if (secondWidth > columnWidthPx * 1.12) score -= 60;
+  if (firstWidth > columnWidthPx * 1.12) score -= 40;
+
+  return score;
+}
+
+function findBestSplit(
   tokens: PublicToken[],
   columnWidthPx: number,
   params: DistanceLayoutParams,
-): PublicToken[][] {
-  if (tokens.length === 0) return [];
-
-  let totalWidth = 0;
-  for (const token of tokens) {
-    totalWidth += estimateTokenWidthPx(token, params) + params.wordGap;
-  }
-
-  if (totalWidth <= columnWidthPx * 1.02) {
-    return [tokens];
-  }
-
+  wordGapScale: number,
+  fontScale: number,
+): { rows: PublicToken[][]; score: number } {
   let bestSplit = 1;
   let bestScore = Number.NEGATIVE_INFINITY;
 
   for (let split = 1; split < tokens.length; split += 1) {
     const first = tokens.slice(0, split);
     const second = tokens.slice(split);
-    const firstUnits = countRowUnits(first);
-    const secondUnits = countRowUnits(second);
-
-    if (secondUnits === 0) continue;
-
-    let score = 0;
-    score -= Math.abs(firstUnits - secondUnits) * 12;
-
-    if (secondUnits <= 2) score -= 120;
-    if (secondUnits === 1) score -= 80;
-    if (firstUnits <= 2 && secondUnits > 2) score -= 60;
-
-    const firstWidth = first.reduce(
-      (sum, token) => sum + estimateTokenWidthPx(token, params) + params.wordGap,
-      0,
-    );
-    const secondWidth = second.reduce(
-      (sum, token) => sum + estimateTokenWidthPx(token, params) + params.wordGap,
-      0,
-    );
-
-    if (firstWidth <= columnWidthPx * 1.05) score += 20;
-    if (secondWidth <= columnWidthPx * 1.05) score += 20;
-    if (secondWidth > columnWidthPx * 1.15) score -= 40;
-
+    const score = splitScore(first, second, columnWidthPx, params, wordGapScale, fontScale);
     if (score > bestScore) {
       bestScore = score;
       bestSplit = split;
@@ -338,9 +367,85 @@ export function packTokensIntoRows(
 
   const firstRow = tokens.slice(0, bestSplit);
   const secondRow = tokens.slice(bestSplit);
+  if (secondRow.length === 0) return { rows: [firstRow], score: bestScore };
 
-  if (secondRow.length === 0) return [firstRow];
-  return [firstRow, secondRow];
+  return { rows: [firstRow, secondRow], score: bestScore };
+}
+
+function hasOrphanTail(rows: PublicToken[][]): boolean {
+  if (rows.length < 2) return false;
+  return continuationUnits(rows[rows.length - 1]!) <= MAX_ORPHAN_UNITS;
+}
+
+/** Pack one lyric line into 1–2 balanced rows, trying local fixes before orphan tails. */
+export function packTokensIntoRows(
+  tokens: PublicToken[],
+  columnWidthPx: number,
+  params: DistanceLayoutParams,
+): LinePackResult {
+  if (tokens.length === 0) {
+    return { rows: [], wordGapScale: 1, fontScale: 1, widthBoostPx: 0, wrapped: false };
+  }
+
+  const singleRowWidth = rowWidthPx(tokens, params, 1, 1);
+  if (singleRowWidth <= columnWidthPx * 1.02) {
+    return { rows: [tokens], wordGapScale: 1, fontScale: 1, widthBoostPx: 0, wrapped: false };
+  }
+
+  type Candidate = LinePackResult & { score: number };
+  const candidates: Candidate[] = [];
+
+  const strategies: Array<{
+    widthMul: number;
+    widthBoostPx: number;
+    wordGapScale: number;
+    fontScale: number;
+  }> = [
+    { widthMul: 1, widthBoostPx: 0, wordGapScale: 1, fontScale: 1 },
+    { widthMul: 1.05, widthBoostPx: 8, wordGapScale: 1, fontScale: 1 },
+    { widthMul: 1.08, widthBoostPx: 12, wordGapScale: 1, fontScale: 1 },
+    { widthMul: 1, widthBoostPx: 0, wordGapScale: 0.82, fontScale: 1 },
+    { widthMul: 1.03, widthBoostPx: 6, wordGapScale: 0.88, fontScale: 1 },
+    { widthMul: 1, widthBoostPx: 0, wordGapScale: 1, fontScale: 0.94 },
+    { widthMul: 1.04, widthBoostPx: 8, wordGapScale: 0.9, fontScale: 0.96 },
+    { widthMul: 1.06, widthBoostPx: 10, wordGapScale: 0.85, fontScale: 0.95 },
+  ];
+
+  for (const strategy of strategies) {
+    const effectiveWidth = columnWidthPx * strategy.widthMul + strategy.widthBoostPx;
+    const { rows, score } = findBestSplit(
+      tokens,
+      effectiveWidth,
+      params,
+      strategy.wordGapScale,
+      strategy.fontScale,
+    );
+
+    candidates.push({
+      rows,
+      wordGapScale: strategy.wordGapScale,
+      fontScale: strategy.fontScale,
+      widthBoostPx: strategy.widthBoostPx,
+      wrapped: rows.length > 1,
+      score: score - (strategy.fontScale < 1 ? (1 - strategy.fontScale) * 40 : 0),
+    });
+  }
+
+  candidates.sort((a, b) => {
+    const orphanA = hasOrphanTail(a.rows) ? 1 : 0;
+    const orphanB = hasOrphanTail(b.rows) ? 1 : 0;
+    if (orphanA !== orphanB) return orphanA - orphanB;
+    return b.score - a.score;
+  });
+
+  const best = candidates[0]!;
+  return {
+    rows: best.rows,
+    wordGapScale: best.wordGapScale,
+    fontScale: best.fontScale,
+    widthBoostPx: best.widthBoostPx,
+    wrapped: best.wrapped,
+  };
 }
 
 export function countLyricLines(sections: LyricSection[]): number {
@@ -353,13 +458,14 @@ export function countLyricLines(sections: LyricSection[]): number {
 
 export function gapsForRevealedFontSize(revealedFontSize: number) {
   return {
-    wordGap: Math.min(7, Math.max(3, revealedFontSize * 0.12)),
-    lineGap: Math.min(11, Math.max(5, revealedFontSize * 0.18)),
-    stanzaGap: Math.min(36, Math.max(16, revealedFontSize * 0.48)),
+    wordGap: Math.min(6, Math.max(2, revealedFontSize * 0.1)),
+    continuationGap: Math.min(3, Math.max(1, revealedFontSize * 0.035)),
+    lineGap: Math.min(14, Math.max(8, revealedFontSize * 0.24)),
+    stanzaGap: Math.min(44, Math.max(22, revealedFontSize * 0.58)),
     columnGap: Math.min(48, Math.max(24, revealedFontSize * 0.45)),
-    chipHeight: revealedFontSize * 1.02,
-    chipFontSize: revealedFontSize * 0.66,
-    chipMinWidth: revealedFontSize * 1.16,
+    chipHeight: revealedFontSize * 0.98,
+    chipFontSize: revealedFontSize * 0.62,
+    chipMinWidth: revealedFontSize * 1.12,
   };
 }
 
@@ -413,9 +519,9 @@ function widthFitScore(usedWidthRatio: number): number {
 
 function wrapQualityScore(measurement: DistanceLayoutMeasurement): number {
   return (
-    -measurement.orphanWrapCount * 90 -
-    measurement.wrappedLaneCount * 10 -
-    (measurement.lineCount > 0 ? (measurement.wrappedLaneCount / measurement.lineCount) * 80 : 0)
+    -measurement.orphanWrapCount * 110 -
+    measurement.wrappedLaneCount * 8 -
+    (measurement.lineCount > 0 ? (measurement.wrappedLaneCount / measurement.lineCount) * 70 : 0)
   );
 }
 
@@ -522,5 +628,3 @@ export function summarizeSheetColumns(columns: LyricSheetColumn[]) {
     maxTokensPerLine: lineCounts.length > 0 ? Math.max(...lineCounts) : 0,
   };
 }
-
-export { MIN_CONTINUATION_UNITS };

@@ -97,11 +97,23 @@ function LyricLineBlock({
   columnWidthPx: number;
   params: DistanceLayoutParams;
 }) {
-  const rows = packTokensIntoRows(tokens, columnWidthPx, params);
+  const pack = packTokensIntoRows(tokens, columnWidthPx, params);
+  const wordGap = params.wordGap * pack.wordGapScale;
 
   return (
-    <div className="tv-distance-lane">
-      {rows.map((rowTokens, rowIndex) => (
+    <div
+      className={`tv-distance-lane${pack.wrapped ? " tv-distance-lane--wrapped" : ""}`}
+      style={
+        {
+          "--tvd-line-font-scale": pack.fontScale,
+          "--tvd-line-word-gap": `${wordGap}px`,
+          width: pack.widthBoostPx > 0 ? `calc(100% + ${pack.widthBoostPx}px)` : undefined,
+          marginLeft: pack.widthBoostPx > 0 ? `${-pack.widthBoostPx / 2}px` : undefined,
+          marginRight: pack.widthBoostPx > 0 ? `${-pack.widthBoostPx / 2}px` : undefined,
+        } as React.CSSProperties
+      }
+    >
+      {pack.rows.map((rowTokens, rowIndex) => (
         <div
           key={`row-${rowIndex}`}
           className={`tv-distance-line-row${rowIndex > 0 ? " tv-distance-line-row--cont" : ""}`}
@@ -126,6 +138,7 @@ function applyLayoutStyles(
   sheet.style.setProperty("--tvd-chip-height", `${params.chipHeight}px`);
   sheet.style.setProperty("--tvd-chip-min", `${params.chipMinWidth}px`);
   sheet.style.setProperty("--tvd-word-gap", `${params.wordGap}px`);
+  sheet.style.setProperty("--tvd-cont-gap", `${params.continuationGap}px`);
   sheet.style.setProperty("--tvd-line-gap", `${params.lineGap}px`);
   sheet.style.setProperty("--tvd-stanza-gap", `${params.stanzaGap}px`);
   sheet.style.setProperty("--tvd-column-gap", `${params.columnGap}px`);
@@ -163,7 +176,7 @@ function measureLaneStats(sheet: HTMLElement) {
           if (child.classList.contains("tv-distance-punct")) continue;
           lastRowUnits += 1;
         }
-        if (lastRowUnits <= 2) orphanWrapCount += 1;
+        if (lastRowUnits <= 3) orphanWrapCount += 1;
       }
     }
   }
