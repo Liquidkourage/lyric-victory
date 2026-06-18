@@ -2,6 +2,9 @@ import { sanitizeLineTokensForTv } from "./tv-board-layout";
 import type { PublicLine, PublicToken } from "./types";
 
 const LINE_BREAK_MARKER = "/";
+const SHORT_SONG_LINE_COUNT = 14;
+const MIN_WIDTH_RATIO = 0.7;
+const TARGET_MIN_WIDTH_RATIO = 0.85;
 
 const SECTION_LABEL_PATTERN =
   /^\[?\s*(verse|chorus|bridge|intro|outro|pre-?chorus|hook|refrain|interlude|part)\s*\d*\]?\s*$/i;
@@ -19,6 +22,12 @@ export interface LyricSheetColumn {
   sections: LyricSection[];
 }
 
+interface FlatLine {
+  line: PublicLine;
+  sectionLabel?: string;
+  isStanzaStart: boolean;
+}
+
 export interface DistanceLayoutParams {
   revealedFontSize: number;
   columnCount: number;
@@ -34,11 +43,10 @@ export interface DistanceLayoutParams {
 export const DISTANCE_FONT_MAX = 56;
 export const DISTANCE_FONT_MIN = 26;
 export const DISTANCE_COLUMN_MIN = 2;
-export const DISTANCE_COLUMN_MAX = 4;
-export const DISTANCE_FONT_TIE_EPSILON = 3;
+export const DISTANCE_COLUMN_MAX = 5;
 
 export const TARGET_HEIGHT_RATIO = 0.9;
-export const TARGET_WIDTH_RATIO = 0.94;
+export const TARGET_WIDTH_RATIO = 0.92;
 
 export interface DistanceLayoutMeasurement {
   params: DistanceLayoutParams;
@@ -114,9 +122,6 @@ function finalizeSection(section: LyricSection): LyricSection | null {
   return { ...section, stanzas };
 }
 
-/**
- * Build intact lyric sections from original line breaks and blank-line stanza gaps.
- */
 export function buildLyricSections(lines: PublicLine[]): LyricSection[] {
   const sections: LyricSection[] = [];
   let current: LyricSection = { stanzas: [{ lines: [] }] };
@@ -154,6 +159,117 @@ export function buildLyricSections(lines: PublicLine[]): LyricSection[] {
   return sections.filter((section) => section.stanzas.length > 0);
 }
 
+export function flattenSectionsToLines(sections: LyricSection[]): FlatLine[] {
+  const flat: FlatLine[] = [];
+
+  for (const section of sections) {
+    section.stanzas.forEach((stanza, stanzaIndex) => {
+      stanza.lines.forEach((line, lineIndex) => {
+        flat.push({
+          line,
+          sectionLabel:
+            stanzaIndex === 0 && lineIndex === 0 && section.label ? section.label : undefined,
+          isStanzaStart: lineIndex === 0,
+        });
+      });
+    });
+  }
+
+  return flat;
+}
+
+function rebuildSectionsFromFlatChunk(chunk: FlatLine[]): LyricSection[] {
+  if (chunk.length === 0) return [];
+
+  const sections: LyricSection[] = [];
+  let current: LyricSection = { stanzas: [{ lines: [] }] };
+  let currentStanza = current.stanzas[0]!;
+
+  for (const item of chunk) {
+    if (item.sectionLabel && item.isStanzaStart) {
+      if (currentStanza.lines.length > 0 || current.label) {
+        const finalized = finalizeSection(current);
+        if (finalized) sections.push(finalized);
+      }
+      current = { label: item.sectionLabel, stanzas: [{ lines: [] }] };
+      currentStanza = current.stanzas[0]!;
+    } else if (item.isStanzaStart && currentStanza.lines.length > 0) {
+      current.stanzas.push({ lines: [] });
+      currentStanza = current.stanzas[current.stanzas.length - 1]!;
+    }
+
+    currentStanza.lines.push(item.line);
+  }
+
+  const finalized = finalizeSection(current);
+  if (finalized) sections.push(finalized);
+  return sections;
+}
+
+function snapSplitToStanzaStart(flat: FlatLine[], targetIndex: number, minIndex: number): number {
+  const searchRadius = 4;
+  let best = targetIndex;
+
+  for (let offset = 0; offset <= searchRadius; offset += 1) {
+    const forward = targetIndex + offset;
+    if (forward > minIndex && forward < flat.length && flat[forward]?.isStanzaStart) {
+      return forward;
+    }
+
+    const backward = targetIndex - offset;
+    if (backward > minIndex && backward < flat.length && flat[backward]?.isStanzaStart) {
+      return backward;
+    }
+  }
+
+  return best;
+}
+
+function splitFlatLinesIntoColumns(flat: FlatLine[], columnCount: number): FlatLine[][] {
+  if (flat.length === 0) return Array.from({ length: columnCount }, () => []);
+  if (columnCount <= 1) return [flat];
+
+  const linesPerColumn = Math.ceil(flat.length / columnCount);
+  const chunks: FlatLine[][] = [];
+  let start = 0;
+
+  for (let columnIndex = 0; columnIndex < columnCount; columnIndex += 1) {
+    if (start >= flat.length) {
+      chunks.push([]);
+      continue;
+    }
+
+    const isLast = columnIndex === columnCount - 1;
+    let end = isLast ? flat.length : Math.min(start + linesPerColumn, flat.length);
+
+    if (!isLast && end < flat.length) {
+      end = snapSplitToStanzaStart(flat, end, start);
+      if (end <= start) end = Math.min(start + linesPerColumn, flat.length);
+    }
+
+    chunks.push(flat.slice(start, end));
+    start = end;
+  }
+
+  return chunks;
+}
+
+/**
+ * Newspaper-style column flow: read down column 1, then column 2, etc.
+ * Keeps stanza starts intact when possible and always returns N column slots.
+ */
+export function distributeSectionsToColumns(
+  sections: LyricSection[],
+  columnCount: number,
+): LyricSheetColumn[] {
+  const flat = flattenSectionsToLines(sections);
+  const chunks = splitFlatLinesIntoColumns(flat, Math.max(1, columnCount));
+
+  return chunks.map((chunk) => ({
+    sections: rebuildSectionsFromFlatChunk(chunk),
+  }));
+}
+
 export function countLyricLines(sections: LyricSection[]): number {
   return sections.reduce(
     (total, section) =>
@@ -162,41 +278,12 @@ export function countLyricLines(sections: LyricSection[]): number {
   );
 }
 
-/** Assign whole sections to columns — never split stanzas across columns. */
-export function distributeSectionsToColumns(
-  sections: LyricSection[],
-  columnCount: number,
-): LyricSheetColumn[] {
-  if (sections.length === 0) return [];
-  if (columnCount <= 1) return [{ sections }];
-
-  const columns: LyricSheetColumn[] = Array.from({ length: columnCount }, () => ({ sections: [] }));
-  const weights = Array(columnCount).fill(0);
-
-  for (const section of sections) {
-    const sectionWeight =
-      section.stanzas.reduce((total, stanza) => total + stanza.lines.length, 0) +
-      (section.label ? 2 : 0) +
-      section.stanzas.length;
-
-    let target = 0;
-    for (let index = 1; index < columnCount; index += 1) {
-      if (weights[index]! < weights[target]!) target = index;
-    }
-
-    columns[target]!.sections.push(section);
-    weights[target]! += sectionWeight;
-  }
-
-  return columns.filter((column) => column.sections.length > 0);
-}
-
 export function gapsForRevealedFontSize(revealedFontSize: number) {
   return {
     wordGap: Math.min(8, Math.max(3, revealedFontSize * 0.14)),
     lineGap: Math.min(14, Math.max(6, revealedFontSize * 0.22)),
     stanzaGap: Math.min(28, Math.max(12, revealedFontSize * 0.38)),
-    columnGap: Math.min(36, Math.max(16, revealedFontSize * 0.45)),
+    columnGap: Math.min(48, Math.max(24, revealedFontSize * 0.45)),
     chipHeight: revealedFontSize * 1.08,
     chipFontSize: revealedFontSize * 0.78,
     chipMinWidth: revealedFontSize * 1.22,
@@ -235,74 +322,72 @@ export function toDebugInfo(measurement: DistanceLayoutMeasurement): DistanceLay
 }
 
 function heightFitScore(usedHeightRatio: number): number {
-  if (usedHeightRatio < 0.82 || usedHeightRatio > 0.96) {
+  if (usedHeightRatio < 0.85 || usedHeightRatio > 0.95) {
     const distance =
-      usedHeightRatio < 0.82 ? 0.82 - usedHeightRatio : usedHeightRatio - 0.96;
-    return -distance * 120;
+      usedHeightRatio < 0.85 ? 0.85 - usedHeightRatio : usedHeightRatio - 0.95;
+    return -distance * 140;
   }
-  return 20 - Math.abs(usedHeightRatio - TARGET_HEIGHT_RATIO) * 70;
+  return 24 - Math.abs(usedHeightRatio - TARGET_HEIGHT_RATIO) * 80;
 }
 
 function widthFitScore(usedWidthRatio: number): number {
-  if (usedWidthRatio < 0.88 || usedWidthRatio > 0.98) {
-    const distance =
-      usedWidthRatio < 0.88 ? 0.88 - usedWidthRatio : usedWidthRatio - 0.98;
-    return -distance * 100;
+  if (usedWidthRatio < TARGET_MIN_WIDTH_RATIO) {
+    return -((TARGET_MIN_WIDTH_RATIO - usedWidthRatio) * 220);
   }
-  return 14 - Math.abs(usedWidthRatio - TARGET_WIDTH_RATIO) * 60;
+  return 20 - Math.abs(usedWidthRatio - TARGET_WIDTH_RATIO) * 50;
 }
 
 function wrapPenalty(wrappedLaneCount: number, lineCount: number): number {
   if (lineCount === 0) return 0;
-  const ratio = wrappedLaneCount / lineCount;
-  return -ratio * 180 - wrappedLaneCount * 8;
+  return -(wrappedLaneCount / lineCount) * 120 - wrappedLaneCount * 6;
 }
 
-function lineLengthScore(maxTokensPerLine: number, avgTokensPerLine: number): number {
-  let score = 0;
-  if (maxTokensPerLine > 14) score -= 200 + (maxTokensPerLine - 14) * 30;
-  else if (maxTokensPerLine > 10) score -= (maxTokensPerLine - 10) * 18;
-  else score += 12;
-
-  score -= Math.abs(avgTokensPerLine - 7) * 8;
-  return score;
-}
-
-function columnPreferenceScore(columnCount: number): number {
-  if (columnCount === 3) return 24;
-  if (columnCount === 4) return 20;
-  if (columnCount === 2) return -16;
-  return 0;
+function isAcceptableWidth(measurement: DistanceLayoutMeasurement): boolean {
+  if (measurement.lineCount <= SHORT_SONG_LINE_COUNT) return true;
+  return measurement.usedWidthRatio >= MIN_WIDTH_RATIO;
 }
 
 function compareDistanceLayouts(
   a: DistanceLayoutMeasurement,
   b: DistanceLayoutMeasurement,
 ): number {
-  const wrapDelta = wrapPenalty(a.wrappedLaneCount, a.lineCount) - wrapPenalty(b.wrappedLaneCount, b.lineCount);
-  if (wrapDelta !== 0) return wrapDelta;
-
-  const lineDelta =
-    lineLengthScore(a.maxTokensPerLine, a.avgTokensPerLine) -
-    lineLengthScore(b.maxTokensPerLine, b.avgTokensPerLine);
-  if (lineDelta !== 0) return lineDelta;
-
-  const columnDelta =
-    columnPreferenceScore(a.params.columnCount) - columnPreferenceScore(b.params.columnCount);
-  if (columnDelta !== 0) return columnDelta;
-
   const fontDelta = a.revealedFontSize - b.revealedFontSize;
-  if (Math.abs(fontDelta) > DISTANCE_FONT_TIE_EPSILON) return fontDelta;
-
-  const heightDelta = heightFitScore(a.usedHeightRatio) - heightFitScore(b.usedHeightRatio);
-  if (heightDelta !== 0) return heightDelta;
+  if (fontDelta !== 0) return fontDelta;
 
   const widthDelta = widthFitScore(a.usedWidthRatio) - widthFitScore(b.usedWidthRatio);
   if (widthDelta !== 0) return widthDelta;
 
-  if (fontDelta !== 0) return fontDelta;
+  const heightDelta = heightFitScore(a.usedHeightRatio) - heightFitScore(b.usedHeightRatio);
+  if (heightDelta !== 0) return heightDelta;
 
-  return b.params.columnCount - a.params.columnCount;
+  const wrapDelta = wrapPenalty(a.wrappedLaneCount, a.lineCount) - wrapPenalty(b.wrappedLaneCount, b.lineCount);
+  if (wrapDelta !== 0) return wrapDelta;
+
+  return a.params.columnCount - b.params.columnCount;
+}
+
+function maxFittingFontForColumns(
+  columnCount: number,
+  columns: LyricSheetColumn[],
+  measure: (params: DistanceLayoutParams, columns: LyricSheetColumn[]) => DistanceLayoutMeasurement,
+): DistanceLayoutMeasurement | null {
+  let lo = DISTANCE_FONT_MIN;
+  let hi = DISTANCE_FONT_MAX;
+  let best: DistanceLayoutMeasurement | null = null;
+
+  while (lo <= hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    const measurement = measure(buildLayoutParams(mid, columnCount), columns);
+
+    if (measurement.overflowX <= 1 && measurement.overflowY <= 1 && isAcceptableWidth(measurement)) {
+      best = measurement;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+
+  return best;
 }
 
 export function pickBestDistanceLayout(
@@ -310,6 +395,7 @@ export function pickBestDistanceLayout(
   measure: (params: DistanceLayoutParams, columns: LyricSheetColumn[]) => DistanceLayoutMeasurement,
 ): DistanceLayoutPick {
   const sections = buildLyricSections(lines);
+  const lineCount = countLyricLines(sections);
   const valid: DistanceLayoutMeasurement[] = [];
   const columnsByCount = new Map<number, LyricSheetColumn[]>();
 
@@ -317,15 +403,12 @@ export function pickBestDistanceLayout(
     const columns = distributeSectionsToColumns(sections, columnCount);
     columnsByCount.set(columnCount, columns);
 
-    for (let fontSize = DISTANCE_FONT_MIN; fontSize <= DISTANCE_FONT_MAX; fontSize += 1) {
-      const measurement = measure(buildLayoutParams(fontSize, columnCount), columns);
-      if (measurement.overflowX > 1 || measurement.overflowY > 1) continue;
-      valid.push(measurement);
-    }
+    const bestForColumns = maxFittingFontForColumns(columnCount, columns, measure);
+    if (bestForColumns) valid.push(bestForColumns);
   }
 
   if (valid.length === 0) {
-    const columnCount = 3;
+    const columnCount = Math.min(3, DISTANCE_COLUMN_MAX);
     const columns = distributeSectionsToColumns(sections, columnCount);
     const fallback = measure(buildLayoutParams(DISTANCE_FONT_MIN, columnCount), columns);
     return { params: fallback.params, measurement: fallback, columns };

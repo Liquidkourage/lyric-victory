@@ -100,6 +100,7 @@ function applyLayoutStyles(
   sheet.style.setProperty("--tvd-line-gap", `${params.lineGap}px`);
   sheet.style.setProperty("--tvd-stanza-gap", `${params.stanzaGap}px`);
   sheet.style.setProperty("--tvd-column-gap", `${params.columnGap}px`);
+  sheet.style.setProperty("--tvd-columns", String(params.columnCount));
   sheet.style.width = `${viewportWidth}px`;
   sheet.style.height = `${viewportHeight}px`;
   sheet.style.maxHeight = `${viewportHeight}px`;
@@ -132,6 +133,23 @@ function measureLaneStats(sheet: HTMLElement, lineHeightPx: number) {
   };
 }
 
+function measureContentExtent(sheet: HTMLElement, viewportWidth: number) {
+  const sheetRect = sheet.getBoundingClientRect();
+  let contentRight = 0;
+  let contentBottom = 0;
+
+  for (const column of sheet.querySelectorAll<HTMLElement>(".tv-distance-column")) {
+    const rect = column.getBoundingClientRect();
+    contentRight = Math.max(contentRight, rect.right - sheetRect.left);
+    contentBottom = Math.max(contentBottom, rect.bottom - sheetRect.top);
+  }
+
+  return {
+    contentScrollHeight: Math.max(sheet.scrollHeight, contentBottom),
+    contentScrollWidth: Math.min(Math.max(sheet.scrollWidth, contentRight), viewportWidth),
+  };
+}
+
 function measureLayout(
   sheet: HTMLElement,
   params: DistanceLayoutParams,
@@ -141,8 +159,7 @@ function measureLayout(
 ): DistanceLayoutMeasurement {
   applyLayoutStyles(sheet, params, viewportHeight, viewportWidth);
 
-  const contentScrollHeight = sheet.scrollHeight;
-  const contentScrollWidth = sheet.scrollWidth;
+  const { contentScrollHeight, contentScrollWidth } = measureContentExtent(sheet, viewportWidth);
   const overflowY = Math.max(0, contentScrollHeight - viewportHeight);
   const overflowX = Math.max(0, contentScrollWidth - viewportWidth);
   const laneStats = measureLaneStats(sheet, params.revealedFontSize * 1.12);
@@ -187,45 +204,53 @@ function LayoutDebugOverlay({ debug }: { debug: DistanceLayoutDebugInfo }) {
 
 function LyricSheet({
   columns,
+  columnCount,
   globalLaneOffset = 0,
 }: {
   columns: LyricSheetColumn[];
+  columnCount: number;
   globalLaneOffset?: number;
 }) {
   let laneIndex = globalLaneOffset;
 
   return (
     <>
-      {columns.map((column, columnIndex) => (
-        <div key={`col-${columnIndex}`} className="tv-distance-column">
-          {column.sections.map((section, sectionIndex) => (
-            <div key={`sec-${columnIndex}-${sectionIndex}`} className="tv-distance-section">
-              {section.label ? (
-                <p className="tv-distance-section-label">{section.label}</p>
-              ) : null}
-              {section.stanzas.map((stanza, stanzaIndex) => (
-                <div key={`stanza-${columnIndex}-${sectionIndex}-${stanzaIndex}`} className="tv-distance-stanza">
-                  {stanza.lines.map((line, lineIndex) => {
-                    const laneKey = `lane-${laneIndex}`;
-                    const alt = laneIndex % 2 === 1;
-                    laneIndex += 1;
-                    return (
-                      <div
-                        key={laneKey}
-                        className={`tv-distance-lane${alt ? " tv-distance-lane--alt" : ""}`}
-                      >
-                        {line.tokens.map((token, tokenIndex) =>
-                          renderLaneToken(token, `${laneKey}-t-${tokenIndex}`),
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
-          ))}
-        </div>
-      ))}
+      {Array.from({ length: columnCount }, (_, columnIndex) => {
+        const column = columns[columnIndex] ?? { sections: [] };
+        return (
+          <div key={`col-${columnIndex}`} className="tv-distance-column">
+            {column.sections.map((section, sectionIndex) => (
+              <div key={`sec-${columnIndex}-${sectionIndex}`} className="tv-distance-section">
+                {section.label ? (
+                  <p className="tv-distance-section-label">{section.label}</p>
+                ) : null}
+                {section.stanzas.map((stanza, stanzaIndex) => (
+                  <div
+                    key={`stanza-${columnIndex}-${sectionIndex}-${stanzaIndex}`}
+                    className="tv-distance-stanza"
+                  >
+                    {stanza.lines.map((line) => {
+                      const laneKey = `lane-${laneIndex}`;
+                      const alt = laneIndex % 2 === 1;
+                      laneIndex += 1;
+                      return (
+                        <div
+                          key={laneKey}
+                          className={`tv-distance-lane${alt ? " tv-distance-lane--alt" : ""}`}
+                        >
+                          {line.tokens.map((token, tokenIndex) =>
+                            renderLaneToken(token, `${laneKey}-t-${tokenIndex}`),
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        );
+      })}
     </>
   );
 }
@@ -262,6 +287,7 @@ export function DistanceLyricBoard({
           measuringColumn = params.columnCount;
           flushSync(() => {
             setColumns(nextColumns);
+            setLayout(buildLayoutParams(params.revealedFontSize, params.columnCount));
           });
         }
 
@@ -283,7 +309,7 @@ export function DistanceLyricBoard({
     return () => observer.disconnect();
   }, [lines]);
 
-  if (columns.length === 0) {
+  if (columns.length === 0 && layout.columnCount === 0) {
     return null;
   }
 
@@ -303,10 +329,11 @@ export function DistanceLyricBoard({
             "--tvd-line-gap": `${layout.lineGap}px`,
             "--tvd-stanza-gap": `${layout.stanzaGap}px`,
             "--tvd-column-gap": `${layout.columnGap}px`,
+            "--tvd-columns": layout.columnCount,
           } as React.CSSProperties
         }
       >
-        <LyricSheet columns={columns} />
+        <LyricSheet columns={columns} columnCount={layout.columnCount} />
       </div>
     </div>
   );
