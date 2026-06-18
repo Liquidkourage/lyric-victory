@@ -11,7 +11,120 @@ import { getBlankProgress } from "../../src/lib/round-progress";
 import type { PublicGameState } from "../../src/lib/types";
 
 const LOCAL_PORT = Number(process.env.PORT ?? 3000);
-const DEFAULT_PRESET_WAIT_MS = 10_000;
+const DEFAULT_PRESET_WAIT_MS = 15_000;
+
+interface PlaytestCliOptions {
+  remote: boolean;
+  url: string | null;
+  code: string | null;
+  waitMs: number;
+}
+
+function parsePlaytestArgs(): PlaytestCliOptions {
+  const rawArgs = process.argv.slice(2).filter((arg) => arg !== "--");
+  const positional: string[] = [];
+  let remote = false;
+  let url: string | null = null;
+  let code: string | null = null;
+  let waitSeconds: number | null = null;
+
+  for (let index = 0; index < rawArgs.length; index += 1) {
+    const arg = rawArgs[index]!;
+
+    if (arg === "--remote") {
+      remote = true;
+      continue;
+    }
+    if (arg === "--help" || arg === "-h") {
+      continue;
+    }
+    if (arg.startsWith("--remote=")) {
+      remote = true;
+      url = arg.slice("--remote=".length);
+      continue;
+    }
+    if ((arg === "--url" || arg === "-u") && rawArgs[index + 1]) {
+      url = rawArgs[index + 1]!;
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("--url=")) {
+      url = arg.slice("--url=".length);
+      continue;
+    }
+    if ((arg === "--code" || arg === "-c") && rawArgs[index + 1]) {
+      code = normalizeRoomCode(rawArgs[index + 1]!);
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("--code=")) {
+      code = normalizeRoomCode(arg.slice("--code=".length));
+      continue;
+    }
+    if ((arg === "--wait" || arg === "-w") && rawArgs[index + 1]) {
+      waitSeconds = Number(rawArgs[index + 1]);
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("--wait=")) {
+      waitSeconds = Number(arg.slice("--wait=".length));
+      continue;
+    }
+    if (/^--wait(\d+)$/i.test(arg)) {
+      waitSeconds = Number(arg.replace(/^--wait/i, ""));
+      continue;
+    }
+
+    positional.push(arg);
+  }
+
+  if (!url) {
+    const urlIndex = positional.findIndex((arg) => looksLikeUrl(arg));
+    if (urlIndex >= 0) {
+      url = positional[urlIndex]!;
+      positional.splice(urlIndex, 1);
+    }
+  }
+
+  for (const arg of positional) {
+    if (/^\d+$/.test(arg)) {
+      if (waitSeconds === null || Number.isNaN(waitSeconds)) {
+        waitSeconds = Number(arg);
+      }
+      continue;
+    }
+
+    if (/^[A-Z0-9]{4,12}$/i.test(arg) && !looksLikeUrl(arg) && !code) {
+      code = normalizeRoomCode(arg);
+    }
+  }
+
+  return {
+    remote,
+    url,
+    code,
+    waitMs: resolveWaitMs(waitSeconds, Boolean(code), remote),
+  };
+}
+
+function resolveWaitMs(waitSeconds: number | null, hasPresetCode: boolean, remote: boolean): number {
+  if (waitSeconds !== null && Number.isFinite(waitSeconds) && waitSeconds >= 0) {
+    return Math.round(waitSeconds * 1000);
+  }
+
+  if (process.env.PLAYTEST_WAIT_MS) {
+    const fromEnv = Number(process.env.PLAYTEST_WAIT_MS);
+    if (Number.isFinite(fromEnv) && fromEnv >= 0) {
+      return Math.round(fromEnv);
+    }
+  }
+
+  if (hasPresetCode || remote) {
+    return DEFAULT_PRESET_WAIT_MS;
+  }
+
+  return 0;
+}
 
 const PLAYERS = ["Alex", "Jordan", "Sam"] as const;
 
@@ -52,47 +165,7 @@ function looksLikeUrl(value: string): boolean {
   );
 }
 
-function readCliUrl(): string | null {
-  const args = process.argv.slice(2).filter((arg) => arg !== "--");
-
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index];
-    if ((arg === "--url" || arg === "-u") && args[index + 1]) {
-      return args[index + 1];
-    }
-    if (arg.startsWith("--url=")) {
-      return arg.slice("--url=".length);
-    }
-    if (arg.startsWith("--remote=") && arg.length > "--remote=".length) {
-      return arg.slice("--remote=".length);
-    }
-  }
-
-  for (const arg of args) {
-    if (arg === "--remote" || arg === "--help" || arg === "-h" || arg.startsWith("-")) {
-      continue;
-    }
-    if (looksLikeUrl(arg)) {
-      return arg;
-    }
-  }
-
-  return null;
-}
-
 function readRequestedRoomCode(): string | null {
-  const args = process.argv.slice(2).filter((arg) => arg !== "--");
-
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index];
-    if ((arg === "--code" || arg === "-c") && args[index + 1]) {
-      return normalizeRoomCode(args[index + 1]);
-    }
-    if (arg.startsWith("--code=")) {
-      return normalizeRoomCode(arg.slice("--code=".length));
-    }
-  }
-
   if (process.env.PLAYTEST_CODE) {
     return normalizeRoomCode(process.env.PLAYTEST_CODE);
   }
@@ -100,28 +173,7 @@ function readRequestedRoomCode(): string | null {
   return null;
 }
 
-function readPresetWaitMs(hasPresetCode: boolean): number {
-  const args = process.argv.slice(2).filter((arg) => arg !== "--");
-
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index];
-    if ((arg === "--wait" || arg === "-w") && args[index + 1]) {
-      return Math.max(0, Number(args[index + 1]) * 1000);
-    }
-    if (arg.startsWith("--wait=")) {
-      return Math.max(0, Number(arg.slice("--wait=".length)) * 1000);
-    }
-  }
-
-  if (process.env.PLAYTEST_WAIT_MS) {
-    return Math.max(0, Number(process.env.PLAYTEST_WAIT_MS));
-  }
-
-  return hasPresetCode ? DEFAULT_PRESET_WAIT_MS : 0;
-}
-
-function resolveBaseUrl(requireRemote: boolean): string {
-  const cliUrl = readCliUrl();
+function resolveBaseUrl(requireRemote: boolean, cliUrl: string | null): string {
   if (cliUrl) return normalizeBaseUrl(cliUrl);
 
   if (process.env.PLAYTEST_URL) {
@@ -155,13 +207,16 @@ Usage:
 Options:
   --url, -u     Target server (local dev or Railway public URL)
   --code, -c    Preset room code (open /display/CODE before the round starts)
-  --wait, -w    Seconds to wait after printing the display URL (default 10 with --code)
+  --wait, -w    Seconds to wait after the room is created (default 15 for playtest:remote)
+  --wait=15     Same, Windows-safe form
   <url>         Bare URL also works (Windows/npm often drops --url)
+  TVTEST 15     Bare code + seconds also work when flags are stripped
   --remote      Require a remote URL (via flag, PLAYTEST_URL, or .env.playtest)
   --help, -h    Show this help
 
 Preset display example:
-  npm run playtest:remote -- https://your-app.up.railway.app --code TVTEST --wait 15
+  npm run playtest:remote -- https://your-app.up.railway.app TVTEST 15
+  npm run playtest:remote -- https://your-app.up.railway.app --wait=15 --code=TVTEST
 
 Or save PLAYTEST_CODE and PLAYTEST_WAIT_MS in .env.playtest.
 
@@ -183,6 +238,20 @@ async function assertServerReachable(baseUrl: string) {
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitWithCountdown(totalMs: number) {
+  if (totalMs <= 0) return;
+
+  const totalSeconds = Math.max(1, Math.round(totalMs / 1000));
+  log("SETUP", `Waiting ${totalSeconds}s — open the display now`);
+
+  for (let remaining = totalSeconds; remaining > 0; remaining -= 1) {
+    if (remaining < totalSeconds) {
+      log("SETUP", `Starting in ${remaining}s…`);
+    }
+    await sleep(1000);
+  }
 }
 
 function stamp() {
@@ -307,13 +376,16 @@ async function main() {
     return;
   }
 
-  const requireRemote = args.includes("--remote");
   loadPlaytestEnvFile();
-  const requestedCode = readRequestedRoomCode();
-  const presetWaitMs = readPresetWaitMs(Boolean(requestedCode));
-  const baseUrl = resolveBaseUrl(requireRemote);
+  const cli = parsePlaytestArgs();
+  const requestedCode = cli.code ?? readRequestedRoomCode();
+  const presetWaitMs = cli.waitMs;
+  const baseUrl = resolveBaseUrl(cli.remote, cli.url);
 
   log("TARGET", baseUrl);
+  if (presetWaitMs > 0) {
+    log("SETUP", `Display pause: ${Math.round(presetWaitMs / 1000)}s`);
+  }
 
   if (requestedCode) {
     log("DISPLAY", `Preset room ${requestedCode}`);
@@ -333,8 +405,7 @@ async function main() {
   log("SETUP", `Room ${code} ready`);
 
   if (presetWaitMs > 0) {
-    log("SETUP", `Waiting ${Math.round(presetWaitMs / 1000)}s — open the display now`);
-    await sleep(presetWaitMs);
+    await waitWithCountdown(presetWaitMs);
   } else if (!requestedCode) {
     log("DISPLAY", `Open ${displayUrl}`);
   }
