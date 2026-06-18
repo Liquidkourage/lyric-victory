@@ -10,7 +10,8 @@
     "build": "next build",
     "start": "tsx server.ts",
     "lint": "eslint",
-    "playtest:round": "tsx tools/playtest/simulate-round.ts"
+    "playtest:round": "tsx tools/playtest/simulate-round.ts",
+    "playtest:remote": "tsx tools/playtest/simulate-round.ts --remote"
   },
   "dependencies": {
     "cross-env": "^7.0.3",

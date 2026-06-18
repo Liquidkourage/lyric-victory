@@ -1,10 +1,11 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { io, type Socket } from "socket.io-client";
 import { plainLyricsToTemplate } from "../../src/lib/lyrics";
 import { getBlankProgress } from "../../src/lib/round-progress";
 import type { PublicGameState } from "../../src/lib/types";
 
-const PORT = Number(process.env.PORT ?? 3000);
-const BASE_URL = process.env.PLAYTEST_URL ?? `http://localhost:${PORT}`;
+const LOCAL_PORT = Number(process.env.PORT ?? 3000);
 
 const SAMPLE_LYRICS = `Is this the real life
 Is this just fantasy
@@ -35,6 +36,101 @@ const GUESS_SCRIPT: GuessScript[] = [
   { player: "Jordan", word: "see", pauseMs: 1000 },
 ];
 
+function loadPlaytestEnvFile() {
+  try {
+    const envPath = join(process.cwd(), ".env.playtest");
+    const content = readFileSync(envPath, "utf8");
+    for (const line of content.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const separator = trimmed.indexOf("=");
+      if (separator === -1) continue;
+      const key = trimmed.slice(0, separator).trim();
+      const value = trimmed.slice(separator + 1).trim().replace(/^["']|["']$/g, "");
+      if (key && process.env[key] === undefined) {
+        process.env[key] = value;
+      }
+    }
+  } catch {
+    // Optional local config file.
+  }
+}
+
+function normalizeBaseUrl(raw: string): string {
+  const trimmed = raw.trim().replace(/\/+$/, "");
+  if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) {
+    return `https://${trimmed}`;
+  }
+  return trimmed;
+}
+
+function readCliUrl(): string | null {
+  const args = process.argv.slice(2);
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if ((arg === "--url" || arg === "-u") && args[index + 1]) {
+      return args[index + 1];
+    }
+    if (arg.startsWith("--url=")) {
+      return arg.slice("--url=".length);
+    }
+  }
+  return null;
+}
+
+function resolveBaseUrl(requireRemote: boolean): string {
+  loadPlaytestEnvFile();
+
+  const cliUrl = readCliUrl();
+  if (cliUrl) return normalizeBaseUrl(cliUrl);
+
+  if (process.env.PLAYTEST_URL) {
+    return normalizeBaseUrl(process.env.PLAYTEST_URL);
+  }
+
+  if (requireRemote) {
+    console.error("Remote playtest needs your Railway public URL.\n");
+    console.error("Option A — one-off:");
+    console.error("  npm run playtest:remote -- --url https://your-app.up.railway.app\n");
+    console.error("Option B — save it locally (gitignored):");
+    console.error("  copy .env.playtest.example .env.playtest");
+    console.error("  # edit PLAYTEST_URL, then run: npm run playtest:remote\n");
+    console.error("Option C — env var:");
+    console.error("  $env:PLAYTEST_URL=\"https://your-app.up.railway.app\"; npm run playtest:remote");
+    process.exit(1);
+  }
+
+  return `http://localhost:${LOCAL_PORT}`;
+}
+
+function printUsage() {
+  console.log(`Lyric Victory round playtest
+
+Usage:
+  npm run playtest:round
+  npm run playtest:remote -- --url https://your-app.up.railway.app
+
+Options:
+  --url, -u   Target server (local dev or Railway public URL)
+  --remote    Require a remote URL (via flag, PLAYTEST_URL, or .env.playtest)
+  --help, -h  Show this help
+
+The script creates a room, joins three fake players, runs a scripted round,
+and prints the display URL to open on a TV or browser.
+`);
+}
+
+async function assertServerReachable(baseUrl: string) {
+  const response = await fetch(`${baseUrl}/api/health`, { signal: AbortSignal.timeout(15_000) });
+  if (!response.ok) {
+    throw new Error(`Health check failed (${response.status}) for ${baseUrl}`);
+  }
+  const body = (await response.json()) as { ok?: boolean; service?: string };
+  if (!body.ok || body.service !== "lyric-victory") {
+    throw new Error(`Unexpected health response from ${baseUrl}`);
+  }
+}
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -53,8 +149,12 @@ function emit<T>(socket: Socket, event: string, payload: Record<string, unknown>
   });
 }
 
-function connectSocket(): Promise<Socket> {
-  const socket = io(BASE_URL, { transports: ["websocket"], autoConnect: true });
+function connectSocket(baseUrl: string): Promise<Socket> {
+  const socket = io(baseUrl, {
+    transports: ["websocket", "polling"],
+    autoConnect: true,
+    reconnection: false,
+  });
   return new Promise((resolve, reject) => {
     socket.once("connect", () => resolve(socket));
     socket.once("connect_error", reject);
@@ -107,15 +207,28 @@ function describeDisplay(state: PublicGameState) {
 }
 
 async function main() {
-  const hostSocket = await connectSocket();
-  const displaySocket = await connectSocket();
+  const args = process.argv.slice(2);
+  if (args.includes("--help") || args.includes("-h")) {
+    printUsage();
+    return;
+  }
+
+  const requireRemote = args.includes("--remote");
+  const baseUrl = resolveBaseUrl(requireRemote);
+
+  log("TARGET", baseUrl);
+  await assertServerReachable(baseUrl);
+  log("TARGET", "Health check ok");
+
+  const hostSocket = await connectSocket(baseUrl);
+  const displaySocket = await connectSocket(baseUrl);
 
   log("SETUP", "Creating room…");
   const { code, hostToken } = await new Promise<{ code: string; hostToken: string }>((resolve) => {
     hostSocket.emit("host:create-room", (response: { code: string; hostToken: string }) => resolve(response));
   });
 
-  const displayUrl = `${BASE_URL}/display/${code}`;
+  const displayUrl = `${baseUrl}/display/${code}`;
   log("SETUP", `Room ${code} ready`);
   log("DISPLAY", `Open ${displayUrl}`);
 
@@ -136,7 +249,7 @@ async function main() {
 
   const playerSockets = new Map<string, { socket: Socket; playerId: string }>();
   for (const name of PLAYERS) {
-    const socket = await connectSocket();
+    const socket = await connectSocket(baseUrl);
     const joined = await emit<{ ok: boolean; playerId?: string; error?: string }>(socket, "player:join", {
       code,
       displayName: name,
