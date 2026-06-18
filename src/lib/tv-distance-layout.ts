@@ -236,23 +236,22 @@ function rebuildSectionsFromFlatChunk(chunk: FlatLine[]): LyricSection[] {
   return sections;
 }
 
-/** Assign whole stanzas to columns — never split a stanza across columns. */
-function splitStanzasIntoColumns(flat: FlatLine[], columnCount: number): FlatLine[][] {
+/** Balance lyric lines across columns by token weight (newspaper flow). */
+function distributeFlatLinesBalanced(flat: FlatLine[], columnCount: number): FlatLine[][] {
   if (flat.length === 0) return Array.from({ length: columnCount }, () => []);
   if (columnCount <= 1) return [flat];
 
-  const stanzas = groupFlatIntoStanzas(flat);
   const chunks: FlatLine[][] = Array.from({ length: columnCount }, () => []);
   const weights = Array(columnCount).fill(0);
 
-  for (const stanza of stanzas) {
+  for (const item of flat) {
     let target = 0;
     for (let index = 1; index < columnCount; index += 1) {
       if (weights[index]! < weights[target]!) target = index;
     }
 
-    chunks[target]!.push(...stanza);
-    weights[target]! += stanza.length;
+    chunks[target]!.push(item);
+    weights[target]! += Math.max(1, countLineUnits(item.line.tokens));
   }
 
   return chunks;
@@ -263,7 +262,7 @@ export function distributeSectionsToColumns(
   columnCount: number,
 ): LyricSheetColumn[] {
   const flat = flattenSectionsToLines(sections);
-  const chunks = splitStanzasIntoColumns(flat, Math.max(1, columnCount));
+  const chunks = distributeFlatLinesBalanced(flat, Math.max(1, columnCount));
 
   return chunks.map((chunk) => ({
     sections: rebuildSectionsFromFlatChunk(chunk),
