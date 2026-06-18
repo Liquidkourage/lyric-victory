@@ -1,40 +1,17 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { io, type Socket } from "socket.io-client";
+import {
+  BRING_ME_TO_LIFE,
+  BRING_ME_TO_LIFE_GUESSES,
+} from "./bring-me-to-life-lyrics";
 import { plainLyricsToTemplate } from "../../src/lib/lyrics";
 import { getBlankProgress } from "../../src/lib/round-progress";
 import type { PublicGameState } from "../../src/lib/types";
 
 const LOCAL_PORT = Number(process.env.PORT ?? 3000);
 
-const SAMPLE_LYRICS = `Is this the real life
-Is this just fantasy
-Caught in a landslide
-No escape from reality
-Open your eyes
-Look up to the skies and see`;
-
-type GuessScript = {
-  player: string;
-  word: string;
-  pauseMs: number;
-  note?: string;
-};
-
 const PLAYERS = ["Alex", "Jordan", "Sam"] as const;
-
-const GUESS_SCRIPT: GuessScript[] = [
-  { player: "Alex", word: "real", pauseMs: 1500 },
-  { player: "Jordan", word: "fantasy", pauseMs: 1200 },
-  { player: "Sam", word: "moon", pauseMs: 1000, note: "wrong guess" },
-  { player: "Sam", word: "escape", pauseMs: 800 },
-  { player: "Jordan", word: "landslide", pauseMs: 8500 },
-  { player: "Alex", word: "reality", pauseMs: 9000 },
-  { player: "Sam", word: "eyes", pauseMs: 11000 },
-  { player: "Jordan", word: "open", pauseMs: 1000 },
-  { player: "Alex", word: "skies", pauseMs: 11000 },
-  { player: "Jordan", word: "see", pauseMs: 1000 },
-];
 
 function loadPlaytestEnvFile() {
   try {
@@ -287,18 +264,18 @@ async function main() {
     throw new Error(joinedDisplay.error ?? "Display failed to join room.");
   }
 
-  const round = plainLyricsToTemplate(SAMPLE_LYRICS);
+  const round = plainLyricsToTemplate(BRING_ME_TO_LIFE);
   await emit(hostSocket, "host:add-round", {
     code,
     hostToken,
     round: {
-      title: "Bohemian Rhapsody",
-      artist: "Queen",
+      title: "Bring Me to Life",
+      artist: "Evanescence",
       template: round.template,
       answers: round.answers,
     },
   });
-  log("HOST", `Added "Bohemian Rhapsody" — ${round.answers.length} blanks`);
+  log("HOST", `Added "Bring Me to Life" — ${round.answers.length} blanks`);
 
   const playerSockets = new Map<string, { socket: Socket; playerId: string }>();
   for (const name of PLAYERS) {
@@ -337,7 +314,7 @@ async function main() {
 
   await sleep(800);
 
-  for (const step of GUESS_SCRIPT) {
+  for (const step of BRING_ME_TO_LIFE_GUESSES) {
     await sleep(step.pauseMs);
     const player = playerSockets.get(step.player);
     if (!player) continue;
