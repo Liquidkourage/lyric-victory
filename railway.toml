@@ -7,7 +7,7 @@ healthcheckPath = "/api/health"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
 
-# Mount a Railway volume at /data and set ROOM_STORE_PATH=/data/rooms.json
-# so rooms survive deploys. Hard refresh works either way via socket rejoin.
+# Rooms persist until the host closes them. For deploy/refresh survival on Railway,
+# add the Redis plugin to this service (sets REDIS_URL automatically).
+# Optional fallback: mount a volume at /data and set ROOM_STORE_PATH=/data/rooms.json
 [env]
-ROOM_STORE_PATH = "/data/rooms.json"

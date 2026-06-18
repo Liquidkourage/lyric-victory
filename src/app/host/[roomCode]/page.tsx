@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { AutoRevealTuner } from "@/components/auto-reveal-tuner";
 import {
   CollapsiblePanel,
@@ -14,11 +14,12 @@ import {
   RoomCodeBadge,
   SecondaryButton,
 } from "@/components/game-ui";
-import { getStoredHostToken, rememberHostToken, useHostGame } from "@/hooks/useGameSocket";
+import { clearHostToken, getStoredHostToken, rememberHostToken, useHostGame } from "@/hooks/useGameSocket";
 import { groupWordGuessEntries } from "@/lib/guess-events";
 import type { SongSearchResult } from "@/lib/types";
 
 export default function HostRoomPage() {
+  const router = useRouter();
   const params = useParams<{ roomCode: string }>();
   const roomCode = params.roomCode.toUpperCase();
   const [hostToken, setHostToken] = useState<string | null>(null);
@@ -43,6 +44,7 @@ export default function HostRoomPage() {
     startWordPhase,
     nextRound,
     endGame,
+    closeRoom,
     setAutoRevealWords,
     startAutoRevealPreview,
     stopAutoRevealPreview,
@@ -126,8 +128,8 @@ export default function HostRoomPage() {
         <main className="mx-auto max-w-lg px-6 py-16">
           <Panel title="Host session expired">
             <p className="mb-4 text-sm text-[#c4b5a0]">
-              Open the host link from the browser that created the room, or start a new game. After
-              a deploy, rooms only survive if Railway has a volume mounted at <code>/data</code>.
+              Open the host link from the browser that created the room, or start a new game. Rooms
+              survive deploys when Railway Redis is enabled (REDIS_URL).
             </p>
             <Link href="/host">
               <PrimaryButton>Create New Game</PrimaryButton>
@@ -167,6 +169,19 @@ export default function HostRoomPage() {
           </Link>
           <SecondaryButton onClick={() => navigator.clipboard.writeText(roomCode)}>
             Copy Room Code
+          </SecondaryButton>
+          <SecondaryButton
+            onClick={async () => {
+              const result = await closeRoom();
+              if (result.ok) {
+                clearHostToken(roomCode);
+                router.push("/host");
+              } else {
+                setActionError(result.error ?? "Could not close room.");
+              }
+            }}
+          >
+            Close Room
           </SecondaryButton>
         </div>
 

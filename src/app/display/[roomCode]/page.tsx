@@ -187,8 +187,8 @@ export default function DisplayPage() {
               {error}
               {error.toLowerCase().includes("room") ? (
                 <span className="mt-1 block text-base font-semibold text-white/80">
-                  The server may have redeployed without a persistent volume. Create a new room from
-                  /host, or mount a Railway volume at /data.
+                  The server redeployed without a saved room. Add Railway Redis to this project, then
+                  create a new room from /host.
                 </span>
               ) : null}
             </div>

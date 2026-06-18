@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import Redis from "ioredis";
 import type { HostGameState, Player, RoundConfig, RoundState, WordGuessEntry } from "../lib/types";
 
 export interface PersistedRoom {
@@ -22,10 +23,33 @@ export interface PersistedRoom {
 }
 
 const LOCAL_STORE_PATH = path.join(process.cwd(), ".data", "rooms.json");
+const REDIS_KEY = "lyric-victory:rooms:v1";
 
 let resolvedStorePath: string | null = null;
 let lastSaveAt: number | null = null;
 let lastSaveError: string | null = null;
+let redisClient: Redis | null = null;
+let redisReady = false;
+let storeBackend: "redis" | "file" = "file";
+
+function getRedis(): Redis | null {
+  const url = process.env.REDIS_URL?.trim();
+  if (!url) return null;
+  if (!redisClient) {
+    redisClient = new Redis(url, {
+      maxRetriesPerRequest: 2,
+    });
+    redisClient.on("error", (error) => {
+      console.error("[rooms] Redis error:", error.message);
+      redisReady = false;
+    });
+    redisClient.on("connect", () => {
+      redisReady = true;
+      console.log("[rooms] Redis connected");
+    });
+  }
+  return redisClient;
+}
 
 function canWriteDirectory(directory: string): boolean {
   try {
@@ -39,7 +63,6 @@ function canWriteDirectory(directory: string): boolean {
   }
 }
 
-/** Prefer ROOM_STORE_PATH, then /data on Railway volumes, then local .data fallback. */
 export function getRoomStorePath(): string {
   if (resolvedStorePath) return resolvedStorePath;
 
@@ -59,59 +82,122 @@ export function getRoomStorePath(): string {
   return resolvedStorePath;
 }
 
-export function getRoomStoreStatus() {
-  const storePath = getRoomStorePath();
-  let fileExists = false;
-  let roomCount = 0;
-
-  try {
-    if (fs.existsSync(storePath)) {
-      fileExists = true;
-      const raw = fs.readFileSync(storePath, "utf8");
-      const parsed = JSON.parse(raw) as unknown;
-      if (Array.isArray(parsed)) roomCount = parsed.length;
-    }
-  } catch {
-    // ignore read errors in status probe
-  }
-
-  return {
-    storePath,
-    fileExists,
-    fileRoomCount: roomCount,
-    lastSaveAt,
-    lastSaveError,
-    needsRailwayVolume: storePath.startsWith("/data/"),
-  };
+function parseSnapshot(raw: string): PersistedRoom[] {
+  const parsed = JSON.parse(raw) as unknown;
+  if (!Array.isArray(parsed)) return [];
+  return parsed as PersistedRoom[];
 }
 
-export function loadRoomSnapshot(): PersistedRoom[] {
+function loadRoomSnapshotFromFile(): PersistedRoom[] {
   const storePath = getRoomStorePath();
   try {
     if (!fs.existsSync(storePath)) return [];
-    const raw = fs.readFileSync(storePath, "utf8");
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed as PersistedRoom[];
+    return parseSnapshot(fs.readFileSync(storePath, "utf8"));
   } catch (error) {
     console.error(`Failed to load room snapshot from ${storePath}:`, error);
     return [];
   }
 }
 
-export function saveRoomSnapshot(rooms: PersistedRoom[]): void {
+function saveRoomSnapshotToFile(rooms: PersistedRoom[]): void {
   const storePath = getRoomStorePath();
-  try {
-    const directory = path.dirname(storePath);
-    fs.mkdirSync(directory, { recursive: true });
+  const directory = path.dirname(storePath);
+  fs.mkdirSync(directory, { recursive: true });
 
-    const tempPath = `${storePath}.tmp`;
-    fs.writeFileSync(tempPath, JSON.stringify(rooms), "utf8");
-    fs.renameSync(tempPath, storePath);
+  const tempPath = `${storePath}.tmp`;
+  fs.writeFileSync(tempPath, JSON.stringify(rooms), "utf8");
+  fs.renameSync(tempPath, storePath);
+}
+
+/** Load rooms from Redis (if configured) with file fallback. */
+export async function loadRoomSnapshot(): Promise<PersistedRoom[]> {
+  const fileRooms = loadRoomSnapshotFromFile();
+  const redis = getRedis();
+
+  if (!redis) {
+    storeBackend = "file";
+    console.log(`[rooms] loaded ${fileRooms.length} room(s) from ${getRoomStorePath()}`);
+    return fileRooms;
+  }
+
+  try {
+    const raw = await redis.get(REDIS_KEY);
+    if (raw) {
+      const redisRooms = parseSnapshot(raw);
+      if (redisRooms.length > 0) {
+        storeBackend = "redis";
+        console.log(`[rooms] loaded ${redisRooms.length} room(s) from Redis`);
+        return redisRooms;
+      }
+    }
+
+    if (fileRooms.length > 0) {
+      await redis.set(REDIS_KEY, JSON.stringify(fileRooms));
+      storeBackend = "redis";
+      console.log(`[rooms] migrated ${fileRooms.length} room(s) from file to Redis`);
+      return fileRooms;
+    }
+
+    storeBackend = "redis";
+    return [];
+  } catch (error) {
+    console.error("[rooms] Redis load failed, falling back to file:", error);
+    storeBackend = "file";
+    return fileRooms;
+  }
+}
+
+/** Persist to file immediately and Redis when available. */
+export async function saveRoomSnapshot(rooms: PersistedRoom[]): Promise<void> {
+  try {
+    saveRoomSnapshotToFile(rooms);
     lastSaveAt = Date.now();
     lastSaveError = null;
   } catch (error) {
     lastSaveError = error instanceof Error ? error.message : String(error);
-    console.error(`Failed to save room snapshot to ${storePath}:`, error);
+    console.error(`Failed to save room snapshot to file:`, error);
   }
+
+  const redis = getRedis();
+  if (!redis) return;
+
+  try {
+    await redis.set(REDIS_KEY, JSON.stringify(rooms));
+    storeBackend = "redis";
+    lastSaveAt = Date.now();
+    lastSaveError = null;
+  } catch (error) {
+    lastSaveError = error instanceof Error ? error.message : String(error);
+    console.error("[rooms] Redis save failed:", error);
+  }
+}
+
+export function getRoomStoreStatus() {
+  const storePath = getRoomStorePath();
+  let fileExists = false;
+  let fileRoomCount = 0;
+
+  try {
+    if (fs.existsSync(storePath)) {
+      fileExists = true;
+      fileRoomCount = loadRoomSnapshotFromFile().length;
+    }
+  } catch {
+    // ignore
+  }
+
+  return {
+    backend: storeBackend,
+    redisConfigured: Boolean(process.env.REDIS_URL?.trim()),
+    redisReady,
+    storePath,
+    fileExists,
+    fileRoomCount,
+    lastSaveAt,
+    lastSaveError,
+    persistenceHint:
+      storeBackend === "redis"
+        ? "Rooms survive deploys via Redis."
+        : "Add Railway Redis (REDIS_URL) or a volume at /data so rooms survive deploys.",
+  };
 }

@@ -267,6 +267,7 @@ export function useHostGame(code: string, hostToken: string | null) {
     startSongPhase: () => emitHost<{ ok: boolean; error?: string }>("host:start-song-phase", {}),
     nextRound: () => emitHost<{ ok: boolean; error?: string }>("host:next-round", {}),
     endGame: () => emitHost<{ ok: boolean; error?: string }>("host:end-game", {}),
+    closeRoom: () => emitHost<{ ok: boolean; error?: string }>("host:close-room", {}),
     setAutoRevealWords: (words: string[]) =>
       emitHost<{ ok: boolean; error?: string }>("host:set-auto-reveal-words", { words }),
     startAutoRevealPreview: (roundIndex: number, resetWords = true) =>
@@ -285,6 +286,12 @@ function storeHostToken(code: string, hostToken: string) {
   if (typeof window === "undefined") return;
   localStorage.setItem(`lv-host-${code}`, hostToken);
   sessionStorage.setItem(`lv-host-${code}`, hostToken);
+}
+
+export function clearHostToken(code: string) {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(`lv-host-${code}`);
+  sessionStorage.removeItem(`lv-host-${code}`);
 }
 
 export function rememberHostToken(code: string, hostToken: string) {

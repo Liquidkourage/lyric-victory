@@ -23,10 +23,8 @@ import type {
   SongGuessEntry,
   WordGuessEntry,
 } from "../lib/types";
-import { loadRoomSnapshot, saveRoomSnapshot, getRoomStorePath, getRoomStoreStatus, type PersistedRoom } from "./room-store";
-import { getGameManager, setGameManager } from "./game-manager-instance";
+import { loadRoomSnapshot, saveRoomSnapshot, getRoomStoreStatus, type PersistedRoom } from "./room-store";
 
-const ROOM_TTL_MS = 24 * 60 * 60 * 1000;
 interface InternalRoom {
   code: string;
   hostSocketId: string | null;
@@ -53,22 +51,26 @@ export class GameManager {
   private rooms = new Map<string, InternalRoom>();
   private persistTimer: NodeJS.Timeout | null = null;
 
-  constructor(private io: Server) {
-    const storePath = getRoomStorePath();
-    const snapshots = loadRoomSnapshot();
-    for (const room of snapshots.map((snapshot) => this.hydrateRoom(snapshot))) {
-      this.rooms.set(room.code, room);
-      this.restoreRoomTimers(room);
+  private constructor(private io: Server) {}
+
+  static async create(io: Server): Promise<GameManager> {
+    const manager = new GameManager(io);
+    const snapshots = await loadRoomSnapshot();
+    for (const room of snapshots.map((snapshot) => manager.hydrateRoom(snapshot))) {
+      manager.rooms.set(room.code, room);
+      manager.restoreRoomTimers(room);
     }
 
-    console.log(
-      `[rooms] loaded ${this.rooms.size} room(s) from ${storePath}` +
-        (this.rooms.size === 0 && snapshots.length === 0
-          ? " (attach a Railway volume at /data for deploy survival)"
-          : ""),
-    );
+    if (manager.rooms.size === 0) {
+      const status = getRoomStoreStatus();
+      if (!status.redisConfigured) {
+        console.warn(
+          "[rooms] No rooms loaded. Add Railway Redis (REDIS_URL) so rooms survive deploys and refresh.",
+        );
+      }
+    }
 
-    setInterval(() => this.pruneRooms(), 60 * 60 * 1000);
+    return manager;
   }
 
   getStatus() {
@@ -427,6 +429,20 @@ export class GameManager {
       room.updatedAt = Date.now();
       callback({ ok: true });
       this.broadcast(code);
+    });
+
+    socket.on("host:close-room", ({ code, hostToken }, callback) => {
+      const room = this.requireHost(code, hostToken, socket);
+      if (!room) {
+        callback({ ok: false, error: "Unauthorized or room not found." });
+        return;
+      }
+      this.clearRoundTimer(room);
+      this.rooms.delete(room.code);
+      socket.leave(room.code);
+      room.updatedAt = Date.now();
+      callback({ ok: true });
+      this.flushPersist();
     });
 
     socket.on("player:guess-word", ({ code, playerId, word }, callback) => {
@@ -833,21 +849,6 @@ export class GameManager {
     return null;
   }
 
-  private pruneRooms() {
-    const cutoff = Date.now() - ROOM_TTL_MS;
-    let removed = false;
-    for (const [code, room] of this.rooms.entries()) {
-      if (room.updatedAt < cutoff) {
-        this.clearRoundTimer(room);
-        this.rooms.delete(code);
-        removed = true;
-      }
-    }
-    if (removed) {
-      this.schedulePersist();
-    }
-  }
-
   private serializeRoom(room: InternalRoom): PersistedRoom {
     return {
       code: room.code,
@@ -936,7 +937,7 @@ export class GameManager {
       clearTimeout(this.persistTimer);
       this.persistTimer = null;
     }
-    saveRoomSnapshot([...this.rooms.values()].map((room) => this.serializeRoom(room)));
+    return saveRoomSnapshot([...this.rooms.values()].map((room) => this.serializeRoom(room)));
   }
 }
 

@@ -14,7 +14,7 @@ const handle = app.getRequestHandler();
 
 app
   .prepare()
-  .then(() => {
+  .then(async () => {
     const httpServer = createServer((req, res) => {
       const parsedUrl = parse(req.url ?? "", true);
       handle(req, res, parsedUrl);
@@ -25,15 +25,15 @@ app
       transports: ["websocket", "polling"],
     });
 
-    const gameManager = new GameManager(io);
+    const gameManager = await GameManager.create(io);
     setGameManager(gameManager);
 
     io.on("connection", (socket) => {
       gameManager.registerHandlers(socket);
     });
 
-    const shutdown = () => {
-      gameManager.flushPersist();
+    const shutdown = async () => {
+      await gameManager.flushPersist();
       process.exit(0);
     };
     process.on("SIGTERM", shutdown);
