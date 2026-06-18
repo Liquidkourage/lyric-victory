@@ -152,21 +152,23 @@ code {
 
 .tv-distance-board {
   background: #080706;
+  height: 100%;
 }
 
 .tv-distance-flow {
   width: 100%;
+  height: 100%;
   overflow: hidden;
-  column-fill: balance;
+  column-fill: auto;
   column-gap: var(--tvd-column-gap, 16px);
   font-family: var(--font-roboto-condensed), "Roboto Condensed", "Arial Narrow", "Inter Tight", "Archivo Narrow", system-ui, sans-serif;
-  line-height: 1.12;
-  padding: 2px 4px;
+  line-height: 1.1;
+  padding: 0;
 }
 
 .tv-distance-flow > * {
   margin-right: var(--tvd-word-gap, 6px);
-  margin-bottom: calc(var(--tvd-word-gap, 6px) * 0.35);
+  margin-bottom: var(--tvd-row-gap, 8px);
 }
 
 .tv-distance-revealed {
@@ -261,4 +263,11 @@ code {
   background: rgba(8, 7, 6, 0.94);
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   font-family: "Roboto Condensed", "Arial Narrow", system-ui, sans-serif;
+}
+
+.tv-distance-debug {
+  background: rgba(0, 0, 0, 0.82);
+  border: 1px solid rgba(253, 224, 71, 0.45);
+  border-radius: 6px;
+  padding: 8px 10px;
 }

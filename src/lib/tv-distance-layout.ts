@@ -20,27 +20,32 @@ export interface DistanceLayoutParams {
   columnCount: number;
   dense: boolean;
   wordGap: number;
-  sectionGap: number;
+  rowGap: number;
   columnGap: number;
   chipHeight: number;
   chipFontSize: number;
 }
 
-export const DISTANCE_FONT_MAX = 44;
+export const DISTANCE_FONT_MAX = 56;
 export const DISTANCE_FONT_MIN = 26;
-export const DISTANCE_FONT_FLOOR = 32;
 export const DISTANCE_COLUMN_MIN = 2;
 export const DISTANCE_COLUMN_MAX = 5;
+
+export const TARGET_HEIGHT_RATIO = 0.9;
+export const TARGET_WIDTH_RATIO = 0.96;
+export const MIN_ACCEPTABLE_HEIGHT_RATIO = 0.88;
+export const MAX_UNUSED_HEIGHT_RATIO = 0.12;
 
 function isPunctuationOnly(value: string): boolean {
   return value.length > 0 && !/[a-zA-Z]/.test(value);
 }
 
-export function gapsForRevealedFontSize(revealedFontSize: number) {
+export function gapsForRevealedFontSize(revealedFontSize: number, dense = false) {
+  const scale = dense ? 0.82 : 1;
   return {
-    wordGap: Math.min(10, Math.max(4, revealedFontSize * 0.18)),
-    sectionGap: Math.min(14, Math.max(6, revealedFontSize * 0.24)),
-    columnGap: Math.min(24, Math.max(10, revealedFontSize * 0.35)),
+    wordGap: Math.min(12, Math.max(4, revealedFontSize * 0.18 * scale)),
+    rowGap: Math.min(16, Math.max(5, revealedFontSize * 0.24 * scale)),
+    columnGap: Math.min(28, Math.max(10, revealedFontSize * 0.35 * scale)),
     chipHeight: revealedFontSize * 1.15,
     chipFontSize: revealedFontSize * 0.85,
   };
@@ -49,20 +54,13 @@ export function gapsForRevealedFontSize(revealedFontSize: number) {
 export function buildLayoutParams(
   revealedFontSize: number,
   columnCount: number,
-  dense: boolean,
+  dense = false,
 ): DistanceLayoutParams {
-  const gaps = gapsForRevealedFontSize(revealedFontSize);
-  if (dense) {
-    gaps.wordGap = Math.max(3, gaps.wordGap * 0.82);
-    gaps.sectionGap = Math.max(4, gaps.sectionGap * 0.72);
-    gaps.columnGap = Math.max(6, gaps.columnGap * 0.82);
-  }
-
   return {
     revealedFontSize,
     columnCount,
     dense,
-    ...gaps,
+    ...gapsForRevealedFontSize(revealedFontSize, dense),
   };
 }
 
@@ -73,96 +71,111 @@ export interface DistanceLayoutMeasurement {
   usedHeightRatio: number;
   usedWidthRatio: number;
   revealedFontSize: number;
+  contentScrollHeight: number;
+  contentScrollWidth: number;
+  viewportHeight: number;
+  viewportWidth: number;
 }
 
-/** Font sizes within this range compete on fill quality, not just raw px. */
-const FONT_SIZE_TIE_EPSILON = 2;
-const TARGET_HEIGHT_RATIO = 0.9;
-const TARGET_HEIGHT_BAND: [number, number] = [0.88, 0.92];
-const MIN_WIDTH_RATIO = 0.95;
-
-function heightFillScore(usedHeightRatio: number): number {
-  const bandCenter = TARGET_HEIGHT_RATIO;
-  const distanceFromBand =
-    usedHeightRatio < TARGET_HEIGHT_BAND[0]
-      ? TARGET_HEIGHT_BAND[0] - usedHeightRatio
-      : usedHeightRatio > TARGET_HEIGHT_BAND[1]
-        ? usedHeightRatio - TARGET_HEIGHT_BAND[1]
-        : 0;
-
-  const bandBonus = distanceFromBand === 0 ? 120 : 0;
-  const closeness = Math.max(0, 1 - Math.abs(usedHeightRatio - bandCenter) / 0.35);
-  const emptyLowerPenalty =
-    usedHeightRatio < 0.8 ? (0.8 - usedHeightRatio) * 280 : 0;
-
-  return bandBonus + closeness * 80 - emptyLowerPenalty;
+export interface DistanceLayoutDebugInfo {
+  columns: number;
+  revealedFontSize: number;
+  contentScrollHeight: number;
+  viewportHeight: number;
+  usedHeightRatio: number;
+  contentScrollWidth: number;
+  viewportWidth: number;
+  usedWidthRatio: number;
+  overflowX: number;
+  overflowY: number;
 }
 
-function widthFillScore(usedWidthRatio: number): number {
-  if (usedWidthRatio >= MIN_WIDTH_RATIO) return 60 + (usedWidthRatio - MIN_WIDTH_RATIO) * 100;
-  return usedWidthRatio * 40;
+export function toDebugInfo(measurement: DistanceLayoutMeasurement): DistanceLayoutDebugInfo {
+  return {
+    columns: measurement.params.columnCount,
+    revealedFontSize: measurement.revealedFontSize,
+    contentScrollHeight: measurement.contentScrollHeight,
+    viewportHeight: measurement.viewportHeight,
+    usedHeightRatio: measurement.usedHeightRatio,
+    contentScrollWidth: measurement.contentScrollWidth,
+    viewportWidth: measurement.viewportWidth,
+    usedWidthRatio: measurement.usedWidthRatio,
+    overflowX: measurement.overflowX,
+    overflowY: measurement.overflowY,
+  };
+}
+
+function heightFitScore(usedHeightRatio: number): number {
+  return -Math.abs(usedHeightRatio - TARGET_HEIGHT_RATIO);
+}
+
+function widthFitScore(usedWidthRatio: number): number {
+  return -Math.abs(usedWidthRatio - TARGET_WIDTH_RATIO);
 }
 
 function compareDistanceLayouts(
   a: DistanceLayoutMeasurement,
   b: DistanceLayoutMeasurement,
 ): number {
-  const fontDelta = a.revealedFontSize - b.revealedFontSize;
-  if (Math.abs(fontDelta) > FONT_SIZE_TIE_EPSILON) return fontDelta;
+  if (a.revealedFontSize !== b.revealedFontSize) {
+    return a.revealedFontSize - b.revealedFontSize;
+  }
 
-  const fillDelta =
-    heightFillScore(a.usedHeightRatio) +
-    widthFillScore(a.usedWidthRatio) -
-    (heightFillScore(b.usedHeightRatio) + widthFillScore(b.usedWidthRatio));
+  const heightDelta = heightFitScore(a.usedHeightRatio) - heightFitScore(b.usedHeightRatio);
+  if (heightDelta !== 0) return heightDelta;
 
-  if (fillDelta !== 0) return fillDelta;
+  const widthDelta = widthFitScore(a.usedWidthRatio) - widthFitScore(b.usedWidthRatio);
+  if (widthDelta !== 0) return widthDelta;
 
   return b.params.columnCount - a.params.columnCount;
 }
 
-function enumerateLayoutCandidates(): DistanceLayoutParams[] {
-  const candidates: DistanceLayoutParams[] = [];
+function isAcceptableMeasurement(measurement: DistanceLayoutMeasurement): boolean {
+  if (measurement.overflowX > 1 || measurement.overflowY > 1) return false;
 
-  for (let fontSize = DISTANCE_FONT_MAX; fontSize >= DISTANCE_FONT_FLOOR; fontSize -= 1) {
-    for (let columnCount = DISTANCE_COLUMN_MIN; columnCount <= DISTANCE_COLUMN_MAX; columnCount += 1) {
-      candidates.push(buildLayoutParams(fontSize, columnCount, false));
-    }
+  const unusedHeight = 1 - measurement.usedHeightRatio;
+  if (unusedHeight > MAX_UNUSED_HEIGHT_RATIO && measurement.revealedFontSize < DISTANCE_FONT_MAX) {
+    return false;
   }
 
-  for (let fontSize = DISTANCE_FONT_FLOOR - 1; fontSize >= DISTANCE_FONT_MIN; fontSize -= 1) {
-    for (let columnCount = DISTANCE_COLUMN_MIN; columnCount <= DISTANCE_COLUMN_MAX; columnCount += 1) {
-      candidates.push(buildLayoutParams(fontSize, columnCount, true));
-    }
-  }
-
-  return candidates;
+  return true;
 }
 
 /**
- * Layout search priorities (public TV / bar distance):
- * 1. Measure every font/column candidate — never stop at the first fit
- * 2. Reject any candidate with horizontal or vertical overflow
- * 3. Prefer the largest revealed font size
- * 4. When font sizes are close, prefer height fill near 0.88–0.92 and width fill ≥ 0.95
- * 5. Penalize layouts that leave a large empty band below the lyrics
+ * Evaluate every font size per column count, reject overflow, then score survivors.
+ * Goal: maximize revealed font while filling ~90% of the lyric viewport.
  */
 export function pickBestDistanceLayout(
   measure: (params: DistanceLayoutParams) => DistanceLayoutMeasurement,
-): DistanceLayoutParams {
+): { params: DistanceLayoutParams; measurement: DistanceLayoutMeasurement } {
   const valid: DistanceLayoutMeasurement[] = [];
+  const overflowOnly: DistanceLayoutMeasurement[] = [];
 
-  for (const params of enumerateLayoutCandidates()) {
-    const measurement = measure(params);
-    if (measurement.overflowX > 1 || measurement.overflowY > 1) continue;
-    valid.push(measurement);
+  for (let columnCount = DISTANCE_COLUMN_MIN; columnCount <= DISTANCE_COLUMN_MAX; columnCount += 1) {
+    for (let fontSize = DISTANCE_FONT_MIN; fontSize <= DISTANCE_FONT_MAX; fontSize += 1) {
+      for (const dense of [false, true] as const) {
+        const measurement = measure(buildLayoutParams(fontSize, columnCount, dense));
+        if (measurement.overflowX > 1 || measurement.overflowY > 1) continue;
+
+        if (isAcceptableMeasurement(measurement)) {
+          valid.push(measurement);
+        } else {
+          overflowOnly.push(measurement);
+        }
+      }
+    }
   }
 
-  if (valid.length === 0) {
-    return buildLayoutParams(DISTANCE_FONT_MIN, DISTANCE_COLUMN_MAX, true);
+  const pool = valid.length > 0 ? valid : overflowOnly;
+
+  if (pool.length === 0) {
+    const fallback = measure(buildLayoutParams(DISTANCE_FONT_MIN, DISTANCE_COLUMN_MAX, true));
+    return { params: fallback.params, measurement: fallback };
   }
 
-  valid.sort(compareDistanceLayouts);
-  return valid[valid.length - 1]!.params;
+  pool.sort(compareDistanceLayouts);
+  const best = pool[pool.length - 1]!;
+  return { params: best.params, measurement: best };
 }
 
 export function isRenderableToken(token: PublicToken): boolean {
