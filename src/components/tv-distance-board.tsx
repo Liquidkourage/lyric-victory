@@ -7,7 +7,8 @@ import {
   buildLayoutParams,
   isPunctuationToken,
   isRenderableToken,
-  searchDistanceLayout,
+  pickBestDistanceLayout,
+  type DistanceLayoutMeasurement,
   type DistanceLayoutParams,
 } from "@/lib/tv-distance-layout";
 import type { PublicLine, PublicToken } from "@/lib/types";
@@ -99,8 +100,43 @@ function applyLayoutStyles(element: HTMLElement, params: DistanceLayoutParams, m
   element.dataset.dense = params.dense ? "true" : "false";
 }
 
-function contentFits(flow: HTMLElement, maxHeight: number): boolean {
-  return flow.scrollHeight <= maxHeight + 1 && flow.scrollWidth <= flow.clientWidth + 1;
+function measureContentBounds(flow: HTMLElement, maxWidth: number, maxHeight: number) {
+  const containerRect = flow.getBoundingClientRect();
+  let contentWidth = 0;
+  let contentHeight = 0;
+
+  for (const child of flow.children) {
+    const rect = child.getBoundingClientRect();
+    contentWidth = Math.max(contentWidth, rect.right - containerRect.left);
+    contentHeight = Math.max(contentHeight, rect.bottom - containerRect.top);
+  }
+
+  return {
+    contentWidth: Math.min(contentWidth, maxWidth),
+    contentHeight: Math.min(contentHeight, maxHeight),
+  };
+}
+
+function measureLayout(
+  flow: HTMLElement,
+  params: DistanceLayoutParams,
+  maxHeight: number,
+  maxWidth: number,
+): DistanceLayoutMeasurement {
+  applyLayoutStyles(flow, params, maxHeight);
+
+  const overflowY = Math.max(0, flow.scrollHeight - maxHeight);
+  const overflowX = Math.max(0, flow.scrollWidth - maxWidth);
+  const { contentWidth, contentHeight } = measureContentBounds(flow, maxWidth, maxHeight);
+
+  return {
+    params,
+    overflowX,
+    overflowY,
+    usedHeightRatio: maxHeight > 0 ? contentHeight / maxHeight : 0,
+    usedWidthRatio: maxWidth > 0 ? contentWidth / maxWidth : 0,
+    revealedFontSize: params.revealedFontSize,
+  };
 }
 
 export function DistanceLyricBoard({ lines }: { lines: PublicLine[] }) {
@@ -123,12 +159,7 @@ export function DistanceLyricBoard({ lines }: { lines: PublicLine[] }) {
 
       flow.style.width = `${maxWidth}px`;
 
-      const fits = (params: DistanceLayoutParams) => {
-        applyLayoutStyles(flow, params, maxHeight);
-        return contentFits(flow, maxHeight);
-      };
-
-      const best = searchDistanceLayout(fits);
+      const best = pickBestDistanceLayout((params) => measureLayout(flow, params, maxHeight, maxWidth));
 
       flushSync(() => {
         setLayout(best);
