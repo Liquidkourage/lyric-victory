@@ -187,11 +187,27 @@ function connectSocket(baseUrl: string): Promise<Socket> {
   });
 }
 
+function attachStateTracker(socket: Socket) {
+  let latest: PublicGameState | null = null;
+  socket.on("game:state", (state: PublicGameState) => {
+    latest = state;
+  });
+  return {
+    getLatest: () => latest,
+  };
+}
+
 function waitForState(
   socket: Socket,
   predicate: (state: PublicGameState) => boolean,
-  timeoutMs = 3000,
+  timeoutMs = 10_000,
+  getLatest?: () => PublicGameState | null,
 ): Promise<PublicGameState> {
+  const existing = getLatest?.();
+  if (existing && predicate(existing)) {
+    return Promise.resolve(existing);
+  }
+
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       socket.off("game:state", onState);
@@ -208,6 +224,13 @@ function waitForState(
 
     socket.on("game:state", onState);
   });
+}
+
+async function resyncDisplayState(socket: Socket, code: string) {
+  const joined = await emit<{ ok: boolean; error?: string }>(socket, "display:join", { code });
+  if (!joined.ok) {
+    throw new Error(joined.error ?? "Display re-sync failed.");
+  }
 }
 
 function describeDisplay(state: PublicGameState) {
@@ -258,7 +281,11 @@ async function main() {
   log("SETUP", `Room ${code} ready`);
   log("DISPLAY", `Open ${displayUrl}`);
 
-  await emit(displaySocket, "display:join", { code });
+  const displayState = attachStateTracker(displaySocket);
+  const joinedDisplay = await emit<{ ok: boolean; error?: string }>(displaySocket, "display:join", { code });
+  if (!joinedDisplay.ok) {
+    throw new Error(joinedDisplay.error ?? "Display failed to join room.");
+  }
 
   const round = plainLyricsToTemplate(SAMPLE_LYRICS);
   await emit(hostSocket, "host:add-round", {
@@ -291,7 +318,21 @@ async function main() {
   await emit(hostSocket, "host:start-word-phase", { code, hostToken });
   log("HOST", "Word phase live — lyric board on display");
 
-  let currentState = await waitForState(displaySocket, (s) => s.phase === "word-guess" && Boolean(s.currentRound));
+  let currentState = await waitForState(
+    displaySocket,
+    (s) => s.phase === "word-guess" && Boolean(s.currentRound),
+    10_000,
+    displayState.getLatest,
+  ).catch(async () => {
+    log("DISPLAY", "Re-syncing display state…");
+    await resyncDisplayState(displaySocket, code);
+    return waitForState(
+      displaySocket,
+      (s) => s.phase === "word-guess" && Boolean(s.currentRound),
+      10_000,
+      displayState.getLatest,
+    );
+  });
   log("BOARD", `${currentState.currentRoundIndex + 1} · ${getBlankProgress(currentState.currentRound!.lines).hiddenBlanks} words still hidden`);
 
   await sleep(800);
@@ -331,7 +372,8 @@ async function main() {
         (s) =>
           s.recentWordGuesses[0]?.playerName === step.player &&
           s.recentWordGuesses[0]?.word === step.word.toLowerCase(),
-        2000,
+        5000,
+        displayState.getLatest,
       );
       currentState = state;
       log("DISPLAY", describeDisplay(state));
@@ -345,7 +387,12 @@ async function main() {
     }
   }
 
-  const final = await waitForState(displaySocket, (s) => Boolean(s.players.length), 1000).catch(() => currentState);
+  const final = await waitForState(
+    displaySocket,
+    (s) => Boolean(s.players.length),
+    2000,
+    displayState.getLatest,
+  ).catch(() => currentState);
   const winner = [...final.players].sort((a, b) => b.score - a.score)[0];
   log("FINISH", `Standings: ${final.players.map((p) => `${p.displayName} ${p.score}`).join(" · ")}`);
   log("FINISH", `Leader: ${winner.displayName} (${winner.score} pts)`);
