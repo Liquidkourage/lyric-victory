@@ -296,16 +296,18 @@ code {
 
 .tv-distance-punct {
   display: inline;
-  font-size: calc(var(--tvd-font, 32px) * 0.44);
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.24);
-  letter-spacing: -0.05em;
+  font-family: var(--font-roboto-condensed), "Roboto Condensed", "Archivo Narrow", "Inter Tight", "Arial Narrow", system-ui, sans-serif;
+  font-size: var(--tvd-font, 32px);
+  font-weight: 800;
+  color: #fff9f0;
+  letter-spacing: -0.006em;
+  line-height: 1.14;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.82);
   vertical-align: baseline;
 }
 
 .tv-distance-punct--dense {
-  font-size: calc(var(--tvd-font, 32px) * 0.4);
-  color: rgba(255, 255, 255, 0.2);
+  color: #fff9f0;
 }
 
 .tv-distance-text {
