@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { Roboto_Condensed } from "next/font/google";
+import { DisplayScoreFeed } from "@/components/display-score-feed";
 import { PhaseCountdown } from "@/components/game-ui";
 import { DistanceLyricBoard } from "@/components/tv-distance-board";
 import { usePublicGame } from "@/hooks/useGameSocket";
@@ -87,11 +88,9 @@ function DisplayDistanceHud({
 
 function DisplayDistanceTicker({
   leader,
-  latestGuess,
   recentGuesses,
 }: {
   leader: { name: string; score: number } | null;
-  latestGuess: ReturnType<typeof groupWordGuessEntries>[number] | null;
   recentGuesses: ReturnType<typeof groupWordGuessEntries>;
 }) {
   const items: string[] = [];
@@ -100,14 +99,7 @@ function DisplayDistanceTicker({
     items.push(`Leader: ${leader.name} — ${leader.score}`);
   }
 
-  if (latestGuess) {
-    const points =
-      latestGuess.accepted && latestGuess.totalPoints ? ` +${latestGuess.totalPoints}` : "";
-    const word = latestGuess.accepted ? latestGuess.word : `${latestGuess.word} ✗`;
-    items.push(`Latest: ${latestGuess.playerName} → ${word}${points}`);
-  }
-
-  for (const guess of recentGuesses.slice(latestGuess ? 1 : 0, 4)) {
+  for (const guess of recentGuesses.slice(0, 4)) {
     items.push(`${guess.playerName} → ${guess.word}`);
   }
 
@@ -167,7 +159,6 @@ export default function DisplayPageContent() {
   const roundLabel =
     state && state.currentRoundIndex >= 0 ? `Round ${state.currentRoundIndex + 1}` : "Waiting for host";
   const leader = sortedPlayers.find((player) => player.score > 0) ?? null;
-  const latestWordGuess = recentWordGuesses[0] ?? null;
   const showLayoutDebug =
     process.env.NODE_ENV === "development" || searchParams.get("debugLayout") === "1";
   const hudPhaseLabel = formatHudPhaseLabel(state?.announcement, phaseLabel);
@@ -205,9 +196,10 @@ export default function DisplayPageContent() {
             ) : null}
           </main>
 
+          <DisplayScoreFeed recentWordGuesses={recentWordGuesses} roundKey={roundNumber} />
+
           <DisplayDistanceTicker
             leader={leader ? { name: leader.displayName, score: leader.score } : null}
-            latestGuess={latestWordGuess}
             recentGuesses={recentWordGuesses}
           />
         </>

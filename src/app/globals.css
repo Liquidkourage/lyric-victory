@@ -326,6 +326,27 @@ code {
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
+.display-distance-score-lane {
+  background: rgba(8, 7, 6, 0.9);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  font-family: "Roboto Condensed", "Arial Narrow", system-ui, sans-serif;
+}
+
+.display-score-pop {
+  animation: display-score-pop-in 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes display-score-pop-in {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.94);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 .display-distance-ticker {
   background: rgba(8, 7, 6, 0.94);
   border-top: 1px solid rgba(255, 255, 255, 0.08);
