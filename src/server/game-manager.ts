@@ -63,9 +63,9 @@ export class GameManager {
 
     if (manager.rooms.size === 0) {
       const status = getRoomStoreStatus();
-      if (!status.redisConfigured) {
+      if (!status.postgresConfigured) {
         console.warn(
-          "[rooms] No rooms loaded. Add Railway Redis (REDIS_URL) so rooms survive deploys and refresh.",
+          "[rooms] No rooms loaded. Add Railway Postgres (DATABASE_URL) so rooms survive deploys and refresh.",
         );
       }
     }

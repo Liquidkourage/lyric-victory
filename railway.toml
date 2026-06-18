@@ -8,6 +8,5 @@ healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
 
 # Rooms persist until the host closes them. For deploy/refresh survival on Railway,
-# add the Redis plugin to this service (sets REDIS_URL automatically).
-# Optional fallback: mount a volume at /data and set ROOM_STORE_PATH=/data/rooms.json
+# add the Postgres plugin to this project (sets DATABASE_URL automatically).
 [env]

@@ -129,7 +129,7 @@ export default function HostRoomPage() {
           <Panel title="Host session expired">
             <p className="mb-4 text-sm text-[#c4b5a0]">
               Open the host link from the browser that created the room, or start a new game. Rooms
-              survive deploys when Railway Redis is enabled (REDIS_URL).
+              survive deploys when Railway Postgres is enabled (DATABASE_URL).
             </p>
             <Link href="/host">
               <PrimaryButton>Create New Game</PrimaryButton>

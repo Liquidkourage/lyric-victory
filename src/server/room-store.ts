@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import Redis from "ioredis";
+import { Pool } from "pg";
 import type { HostGameState, Player, RoundConfig, RoundState, WordGuessEntry } from "../lib/types";
 
 export interface PersistedRoom {
@@ -23,32 +23,58 @@ export interface PersistedRoom {
 }
 
 const LOCAL_STORE_PATH = path.join(process.cwd(), ".data", "rooms.json");
-const REDIS_KEY = "lyric-victory:rooms:v1";
 
 let resolvedStorePath: string | null = null;
 let lastSaveAt: number | null = null;
 let lastSaveError: string | null = null;
-let redisClient: Redis | null = null;
-let redisReady = false;
-let storeBackend: "redis" | "file" = "file";
+let storeBackend: "postgres" | "file" = "file";
+let pool: Pool | null = null;
+let schemaReady: Promise<void> | null = null;
 
-function getRedis(): Redis | null {
-  const url = process.env.REDIS_URL?.trim();
+function getDatabaseUrl(): string | null {
+  return process.env.DATABASE_URL?.trim() || null;
+}
+
+function getPool(): Pool | null {
+  const url = getDatabaseUrl();
   if (!url) return null;
-  if (!redisClient) {
-    redisClient = new Redis(url, {
-      maxRetriesPerRequest: 2,
+
+  if (!pool) {
+    const useSsl =
+      process.env.PGSSL_DISABLE !== "true" &&
+      !url.includes("localhost") &&
+      !url.includes("127.0.0.1");
+
+    pool = new Pool({
+      connectionString: url,
+      ssl: useSsl ? { rejectUnauthorized: false } : undefined,
+      max: 5,
     });
-    redisClient.on("error", (error) => {
-      console.error("[rooms] Redis error:", error.message);
-      redisReady = false;
-    });
-    redisClient.on("connect", () => {
-      redisReady = true;
-      console.log("[rooms] Redis connected");
+    pool.on("error", (error) => {
+      console.error("[rooms] Postgres pool error:", error.message);
     });
   }
-  return redisClient;
+
+  return pool;
+}
+
+async function ensureSchema(): Promise<void> {
+  const db = getPool();
+  if (!db) return;
+
+  if (!schemaReady) {
+    schemaReady = db
+      .query(`
+        CREATE TABLE IF NOT EXISTS game_rooms (
+          code TEXT PRIMARY KEY,
+          state JSONB NOT NULL,
+          updated_at BIGINT NOT NULL
+        )
+      `)
+      .then(() => undefined);
+  }
+
+  await schemaReady;
 }
 
 function canWriteDirectory(directory: string): boolean {
@@ -109,45 +135,84 @@ function saveRoomSnapshotToFile(rooms: PersistedRoom[]): void {
   fs.renameSync(tempPath, storePath);
 }
 
-/** Load rooms from Redis (if configured) with file fallback. */
+async function loadFromPostgres(): Promise<PersistedRoom[]> {
+  const db = getPool();
+  if (!db) return [];
+
+  await ensureSchema();
+  const result = await db.query<{ state: PersistedRoom }>(
+    "SELECT state FROM game_rooms ORDER BY updated_at ASC",
+  );
+  return result.rows.map((row) => row.state);
+}
+
+async function saveToPostgres(rooms: PersistedRoom[]): Promise<void> {
+  const db = getPool();
+  if (!db) return;
+
+  await ensureSchema();
+  const client = await db.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    if (rooms.length === 0) {
+      await client.query("DELETE FROM game_rooms");
+    } else {
+      const codes = rooms.map((room) => room.code);
+      await client.query("DELETE FROM game_rooms WHERE NOT (code = ANY($1::text[]))", [codes]);
+
+      for (const room of rooms) {
+        await client.query(
+          `INSERT INTO game_rooms (code, state, updated_at)
+           VALUES ($1, $2::jsonb, $3)
+           ON CONFLICT (code) DO UPDATE
+           SET state = EXCLUDED.state, updated_at = EXCLUDED.updated_at`,
+          [room.code, JSON.stringify(room), room.updatedAt],
+        );
+      }
+    }
+
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/** Load rooms from Postgres when configured, otherwise from local file. */
 export async function loadRoomSnapshot(): Promise<PersistedRoom[]> {
   const fileRooms = loadRoomSnapshotFromFile();
-  const redis = getRedis();
+  const db = getPool();
 
-  if (!redis) {
+  if (!db) {
     storeBackend = "file";
     console.log(`[rooms] loaded ${fileRooms.length} room(s) from ${getRoomStorePath()}`);
     return fileRooms;
   }
 
   try {
-    const raw = await redis.get(REDIS_KEY);
-    if (raw) {
-      const redisRooms = parseSnapshot(raw);
-      if (redisRooms.length > 0) {
-        storeBackend = "redis";
-        console.log(`[rooms] loaded ${redisRooms.length} room(s) from Redis`);
-        return redisRooms;
-      }
+    let postgresRooms = await loadFromPostgres();
+
+    if (postgresRooms.length === 0 && fileRooms.length > 0) {
+      await saveToPostgres(fileRooms);
+      postgresRooms = fileRooms;
+      console.log(`[rooms] migrated ${fileRooms.length} room(s) from file to Postgres`);
     }
 
-    if (fileRooms.length > 0) {
-      await redis.set(REDIS_KEY, JSON.stringify(fileRooms));
-      storeBackend = "redis";
-      console.log(`[rooms] migrated ${fileRooms.length} room(s) from file to Redis`);
-      return fileRooms;
-    }
-
-    storeBackend = "redis";
-    return [];
+    storeBackend = "postgres";
+    console.log(`[rooms] loaded ${postgresRooms.length} room(s) from Postgres`);
+    return postgresRooms;
   } catch (error) {
-    console.error("[rooms] Redis load failed, falling back to file:", error);
+    console.error("[rooms] Postgres load failed, falling back to file:", error);
     storeBackend = "file";
     return fileRooms;
   }
 }
 
-/** Persist to file immediately and Redis when available. */
+/** Persist to Postgres when configured, always mirror to local file as backup. */
 export async function saveRoomSnapshot(rooms: PersistedRoom[]): Promise<void> {
   try {
     saveRoomSnapshotToFile(rooms);
@@ -155,20 +220,20 @@ export async function saveRoomSnapshot(rooms: PersistedRoom[]): Promise<void> {
     lastSaveError = null;
   } catch (error) {
     lastSaveError = error instanceof Error ? error.message : String(error);
-    console.error(`Failed to save room snapshot to file:`, error);
+    console.error("Failed to save room snapshot to file:", error);
   }
 
-  const redis = getRedis();
-  if (!redis) return;
+  const db = getPool();
+  if (!db) return;
 
   try {
-    await redis.set(REDIS_KEY, JSON.stringify(rooms));
-    storeBackend = "redis";
+    await saveToPostgres(rooms);
+    storeBackend = "postgres";
     lastSaveAt = Date.now();
     lastSaveError = null;
   } catch (error) {
     lastSaveError = error instanceof Error ? error.message : String(error);
-    console.error("[rooms] Redis save failed:", error);
+    console.error("[rooms] Postgres save failed:", error);
   }
 }
 
@@ -188,16 +253,15 @@ export function getRoomStoreStatus() {
 
   return {
     backend: storeBackend,
-    redisConfigured: Boolean(process.env.REDIS_URL?.trim()),
-    redisReady,
+    postgresConfigured: Boolean(getDatabaseUrl()),
     storePath,
     fileExists,
     fileRoomCount,
     lastSaveAt,
     lastSaveError,
     persistenceHint:
-      storeBackend === "redis"
-        ? "Rooms survive deploys via Redis."
-        : "Add Railway Redis (REDIS_URL) or a volume at /data so rooms survive deploys.",
+      storeBackend === "postgres"
+        ? "Rooms survive deploys via Postgres."
+        : "Add Railway Postgres (DATABASE_URL) so rooms survive deploys.",
   };
 }

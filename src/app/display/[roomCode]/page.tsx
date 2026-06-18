@@ -187,8 +187,8 @@ export default function DisplayPage() {
               {error}
               {error.toLowerCase().includes("room") ? (
                 <span className="mt-1 block text-base font-semibold text-white/80">
-                  The server redeployed without a saved room. Add Railway Redis to this project, then
-                  create a new room from /host.
+                  The server redeployed without a saved room. Add Railway Postgres to this project,
+                  then create a new room from /host.
                 </span>
               ) : null}
             </div>
