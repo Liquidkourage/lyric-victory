@@ -336,6 +336,10 @@ code {
   animation: display-score-pop-in 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+.display-score-pop--settled {
+  animation: none;
+}
+
 @keyframes display-score-pop-in {
   0% {
     opacity: 0;
