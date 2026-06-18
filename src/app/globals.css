@@ -334,15 +334,26 @@ code {
 
 .display-score-ticker-viewport {
   overflow: hidden;
-  mask-image: linear-gradient(to right, transparent, black 5rem, black calc(100% - 1.5rem));
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    black 5rem,
+    black calc(100% - 8rem),
+    transparent
+  );
 }
 
-.display-score-ticker-track {
-  transition: transform 0.42s cubic-bezier(0.22, 1, 0.36, 1);
+.display-score-ticker-crawl {
+  overflow: hidden;
+}
+
+.display-score-ticker-track--crawl {
+  animation: display-score-ticker-crawl var(--ticker-duration, 36s) linear infinite;
+  will-change: transform;
 }
 
 .display-score-pop {
-  animation: display-score-ticker-in 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: none;
 }
 
 .display-score-pop--settled {
@@ -372,14 +383,12 @@ code {
   }
 }
 
-@keyframes display-score-ticker-in {
-  0% {
-    opacity: 0;
-    transform: translateX(1.25rem) scale(0.96);
+@keyframes display-score-ticker-crawl {
+  from {
+    transform: translateX(0);
   }
-  100% {
-    opacity: 1;
-    transform: translateX(0) scale(1);
+  to {
+    transform: translateX(-50%);
   }
 }
 
