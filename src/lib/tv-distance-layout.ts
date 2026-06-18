@@ -236,22 +236,35 @@ function rebuildSectionsFromFlatChunk(chunk: FlatLine[]): LyricSection[] {
   return sections;
 }
 
-/** Balance lyric lines across columns by token weight (newspaper flow). */
-function distributeFlatLinesBalanced(flat: FlatLine[], columnCount: number): FlatLine[][] {
+/** Fill columns sequentially: col 1 top→bottom, then col 2, etc. (newspaper continuation). */
+function distributeFlatLinesColumnFill(flat: FlatLine[], columnCount: number): FlatLine[][] {
   if (flat.length === 0) return Array.from({ length: columnCount }, () => []);
   if (columnCount <= 1) return [flat];
 
   const chunks: FlatLine[][] = Array.from({ length: columnCount }, () => []);
-  const weights = Array(columnCount).fill(0);
+  const totalWeight = flat.reduce(
+    (sum, item) => sum + Math.max(1, countLineUnits(item.line.tokens)),
+    0,
+  );
+  const targetPerColumn = totalWeight / columnCount;
+
+  let columnIndex = 0;
+  let columnWeight = 0;
 
   for (const item of flat) {
-    let target = 0;
-    for (let index = 1; index < columnCount; index += 1) {
-      if (weights[index]! < weights[target]!) target = index;
+    const weight = Math.max(1, countLineUnits(item.line.tokens));
+
+    if (
+      columnIndex < columnCount - 1 &&
+      columnWeight > 0 &&
+      columnWeight + weight * 0.5 > targetPerColumn
+    ) {
+      columnIndex += 1;
+      columnWeight = 0;
     }
 
-    chunks[target]!.push(item);
-    weights[target]! += Math.max(1, countLineUnits(item.line.tokens));
+    chunks[columnIndex]!.push(item);
+    columnWeight += weight;
   }
 
   return chunks;
@@ -262,7 +275,7 @@ export function distributeSectionsToColumns(
   columnCount: number,
 ): LyricSheetColumn[] {
   const flat = flattenSectionsToLines(sections);
-  const chunks = distributeFlatLinesBalanced(flat, Math.max(1, columnCount));
+  const chunks = distributeFlatLinesColumnFill(flat, Math.max(1, columnCount));
 
   return chunks.map((chunk) => ({
     sections: rebuildSectionsFromFlatChunk(chunk),
