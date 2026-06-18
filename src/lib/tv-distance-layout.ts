@@ -417,9 +417,8 @@ export function packTokensIntoRows(
     { widthMul: 1, widthBoostPx: 0, wordGapScale: 1, fontScale: 1 },
     { widthMul: 1.05, widthBoostPx: 8, wordGapScale: 1, fontScale: 1 },
     { widthMul: 1.08, widthBoostPx: 12, wordGapScale: 1, fontScale: 1 },
-    { widthMul: 1, widthBoostPx: 0, wordGapScale: 0.84, fontScale: 1 },
-    { widthMul: 1.03, widthBoostPx: 6, wordGapScale: 0.88, fontScale: 1 },
-    { widthMul: 1.06, widthBoostPx: 10, wordGapScale: 0.86, fontScale: 1 },
+    { widthMul: 1.1, widthBoostPx: 16, wordGapScale: 1, fontScale: 1 },
+    { widthMul: 1.12, widthBoostPx: 20, wordGapScale: 1, fontScale: 1 },
   ];
 
   for (const strategy of strategies) {
@@ -469,7 +468,7 @@ export function countLyricLines(sections: LyricSection[]): number {
 
 export function gapsForRevealedFontSize(revealedFontSize: number) {
   return {
-    wordGap: Math.min(6, Math.max(2, revealedFontSize * 0.1)),
+    wordGap: Math.min(18, Math.max(10, revealedFontSize * 0.28)),
     continuationGap: Math.min(2, Math.max(1, revealedFontSize * 0.028)),
     lineGap: Math.min(12, Math.max(6, revealedFontSize * 0.2)),
     stanzaGap: Math.min(48, Math.max(24, revealedFontSize * 0.62)),
