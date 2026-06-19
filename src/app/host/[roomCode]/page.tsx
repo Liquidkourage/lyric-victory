@@ -22,7 +22,7 @@ export default function HostRoomPage() {
   const router = useRouter();
   const params = useParams<{ roomCode: string }>();
   const roomCode = params.roomCode.toUpperCase();
-  const [hostToken, setHostToken] = useState<string | null>(null);
+  const [hostToken, setHostToken] = useState<string | null | undefined>(undefined);
 
   useEffect(() => {
     const urlToken = new URL(window.location.href).searchParams.get("hostToken");
@@ -110,12 +110,12 @@ export default function HostRoomPage() {
     }
   };
 
-  if (hostToken === null) {
+  if (hostToken === undefined) {
     return (
       <MusicBackdrop>
         <main className="mx-auto max-w-lg px-6 py-16">
           <Panel title="Loading host session…">
-            <p className="text-sm text-[#c4b5a0]">Reconnecting to your room…</p>
+            <p className="text-sm text-[#c4b5a0]">Checking this browser for a saved host link…</p>
           </Panel>
         </main>
       </MusicBackdrop>
@@ -126,14 +126,69 @@ export default function HostRoomPage() {
     return (
       <MusicBackdrop>
         <main className="mx-auto max-w-lg px-6 py-16">
-          <Panel title="Host session expired">
+          <Panel title={`No host access to ${roomCode}`}>
             <p className="mb-4 text-sm text-[#c4b5a0]">
-              Open the host link from the browser that created the room, or start a new game. Rooms
-              survive deploys when Railway Postgres is enabled (DATABASE_URL).
+              This browser does not have the host key for that room. The TV display can still show the
+              game, but only the browser that created the room can host or close it.
             </p>
-            <Link href="/host">
-              <PrimaryButton>Create New Game</PrimaryButton>
-            </Link>
+            <p className="mb-4 text-sm text-[#c4b5a0]">
+              To reclaim a preset playtest room like TVTEST, set{" "}
+              <code className="text-ink">PLAYTEST_TAKEOVER_SECRET</code> on Railway and in{" "}
+              <code className="text-ink">.env.playtest</code>, then rerun{" "}
+              <code className="text-ink">npm run playtest:remote</code> with that code.
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <Link href="/host">
+                <PrimaryButton>Create New Game</PrimaryButton>
+              </Link>
+              <Link href={`/display/${roomCode}`} target="_blank">
+                <SecondaryButton>Open TV Display</SecondaryButton>
+              </Link>
+            </div>
+          </Panel>
+        </main>
+      </MusicBackdrop>
+    );
+  }
+
+  if (!state && !error) {
+    return (
+      <MusicBackdrop>
+        <main className="mx-auto max-w-lg px-6 py-16">
+          <Panel title={`Reconnecting to ${roomCode}…`}>
+            <p className="text-sm text-[#c4b5a0]">
+              {connected ? "Joining your room…" : "Connecting to the game server…"}
+            </p>
+          </Panel>
+        </main>
+      </MusicBackdrop>
+    );
+  }
+
+  if (!state && error) {
+    return (
+      <MusicBackdrop>
+        <main className="mx-auto max-w-lg px-6 py-16">
+          <Panel title={`Cannot host ${roomCode}`}>
+            <p className="mb-4 text-sm text-red-300">{error}</p>
+            <p className="mb-4 text-sm text-[#c4b5a0]">
+              The saved host key no longer matches this room — common after a playtest takeover or
+              server reset. Create a new game or rerun playtest with takeover enabled to replace the
+              room.
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <Link href="/host">
+                <PrimaryButton>Create New Game</PrimaryButton>
+              </Link>
+              <SecondaryButton
+                onClick={() => {
+                  clearHostToken(roomCode);
+                  setHostToken(null);
+                }}
+              >
+                Forget Saved Host Key
+              </SecondaryButton>
+            </div>
           </Panel>
         </main>
       </MusicBackdrop>
