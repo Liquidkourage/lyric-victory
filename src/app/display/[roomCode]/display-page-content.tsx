@@ -9,8 +9,7 @@ import { DistanceLyricBoard } from "@/components/tv-distance-board";
 import { usePublicGame } from "@/hooks/useGameSocket";
 import { FREE_FOR_ALL_MS } from "@/lib/game-constants";
 import { groupWordGuessEntries } from "@/lib/guess-events";
-import { getBlankProgress } from "@/lib/round-progress";
-import type { Player } from "@/lib/types";
+import type { Player, PublicGameState } from "@/lib/types";
 
 const robotoCondensed = Roboto_Condensed({
   subsets: ["latin"],
@@ -18,31 +17,38 @@ const robotoCondensed = Roboto_Condensed({
   variable: "--font-roboto-condensed",
 });
 
-function ConnectionPill({ connected }: { connected: boolean }) {
+function OfflinePill() {
   return (
     <span
-      className={`shrink-0 rounded-md px-3 py-1 text-lg font-black uppercase tracking-wide ${
-        connected ? "bg-[#16a34a] text-white" : "bg-red-800 text-white"
-      }`}
+      className="shrink-0 rounded-md bg-red-800 px-3 py-1 text-lg font-black uppercase tracking-wide text-white"
       aria-live="polite"
     >
-      {connected ? "Live" : "Offline"}
+      Offline
     </span>
   );
-}
-
-function formatHudPhaseLabel(announcement: string | null | undefined, phaseLabel: string): string {
-  if (!announcement) return phaseLabel;
-  if (announcement.startsWith("Round ") && announcement.includes("—")) {
-    return announcement.split("—")[1]?.trim() ?? phaseLabel;
-  }
-  return phaseLabel;
 }
 
 function formatRoundLabel(roundNumber: number, totalRounds: number): string {
   if (roundNumber <= 0) return "Round —";
   if (totalRounds > 0) return `Round ${roundNumber} of ${totalRounds}`;
   return `Round ${roundNumber}`;
+}
+
+function displayPhaseLabel(state: PublicGameState | null): string {
+  if (!state) return "Waiting for host";
+
+  switch (state.phase) {
+    case "song-guess":
+      return "Final title chance";
+    case "between-rounds":
+      return "Open word rush";
+    case "word-guess":
+      return "Guess the words";
+    case "ended":
+      return "Game over";
+    default:
+      return "Song title hidden";
+  }
 }
 
 function HudStandings({ players }: { players: Player[] }) {
@@ -66,9 +72,6 @@ function DisplayDistanceHud({
   roundNumber,
   totalRounds,
   phaseLabel,
-  revealed,
-  hidden,
-  percent,
   connected,
   showWordRushTimer,
   phaseEndsAt,
@@ -77,27 +80,19 @@ function DisplayDistanceHud({
   roundNumber: number;
   totalRounds: number;
   phaseLabel: string;
-  revealed: number;
-  hidden: number;
-  percent: number;
   connected: boolean;
   showWordRushTimer: boolean;
   phaseEndsAt: number | null;
   topPlayers: Player[];
 }) {
   return (
-    <header className="display-distance-hud flex shrink-0 items-center gap-3 px-4 py-1.5">
-      <div className="min-w-0 flex-1 truncate text-lg font-black tracking-tight text-white">
+    <header className="display-distance-hud flex shrink-0 items-center gap-4 px-4 py-2">
+      <div className="min-w-0 shrink-0 text-xl font-black tracking-tight text-white">
         <span>{formatRoundLabel(roundNumber, totalRounds)}</span>
         <span className="mx-2 text-white/35">·</span>
         <span className="text-[#fde047]">{phaseLabel}</span>
-        <span className="mx-2 text-white/35">·</span>
-        <span>{revealed} revealed</span>
-        <span className="mx-2 text-white/35">·</span>
-        <span>{hidden} hidden</span>
-        <span className="mx-2 text-white/35">·</span>
-        <span>{percent}%</span>
       </div>
+      <div className="min-w-0 flex-1" />
       <HudStandings players={topPlayers} />
       {showWordRushTimer && phaseEndsAt ? (
         <div className="shrink-0">
@@ -110,7 +105,7 @@ function DisplayDistanceHud({
           />
         </div>
       ) : null}
-      <ConnectionPill connected={connected} />
+      {!connected ? <OfflinePill /> : null}
     </header>
   );
 }
@@ -129,33 +124,15 @@ export default function DisplayPageContent() {
     [state?.players],
   );
 
-  const phaseLabel =
-    state?.announcement?.startsWith("Auto-reveal tuning")
-      ? "Auto-reveal tuning"
-      : state?.phase === "song-guess"
-        ? "Final title chance"
-        : state?.phase === "between-rounds"
-          ? "Open word rush"
-          : state?.phase === "word-guess"
-            ? "Guess the words"
-            : "Song title hidden";
-
+  const phaseLabel = displayPhaseLabel(state);
   const showWordRushTimer = state?.phase === "between-rounds" && state.phaseEndsAt !== null;
   const boardActive = Boolean(state?.currentRound);
-  const blankProgress = state?.currentRound
-    ? getBlankProgress(state.currentRound.lines)
-    : { totalBlanks: 0, revealedBlanks: 0, hiddenBlanks: 0 };
-  const revealPercent =
-    blankProgress.totalBlanks > 0
-      ? Math.round((blankProgress.revealedBlanks / blankProgress.totalBlanks) * 100)
-      : 0;
   const roundNumber = state && state.currentRoundIndex >= 0 ? state.currentRoundIndex + 1 : 0;
   const totalRounds = state?.totalRounds ?? 0;
   const roundLabel =
     state && state.currentRoundIndex >= 0 ? `Round ${state.currentRoundIndex + 1}` : "Waiting for host";
   const showLayoutDebug =
     process.env.NODE_ENV === "development" || searchParams.get("debugLayout") === "1";
-  const hudPhaseLabel = formatHudPhaseLabel(state?.announcement, phaseLabel);
 
   return (
     <div className={`${robotoCondensed.variable} relative flex h-full w-full flex-col overflow-hidden text-[#f4ede3]`}>
@@ -164,10 +141,7 @@ export default function DisplayPageContent() {
           <DisplayDistanceHud
             roundNumber={roundNumber}
             totalRounds={totalRounds}
-            phaseLabel={hudPhaseLabel}
-            revealed={blankProgress.revealedBlanks}
-            hidden={blankProgress.hiddenBlanks}
-            percent={revealPercent}
+            phaseLabel={phaseLabel}
             connected={connected}
             showWordRushTimer={showWordRushTimer}
             phaseEndsAt={state?.phaseEndsAt ?? null}
@@ -201,7 +175,7 @@ export default function DisplayPageContent() {
               <h1 className="font-display text-6xl font-black leading-none text-white">{roundLabel}</h1>
               <p className="mt-2 text-3xl font-bold text-[#fde047]">{phaseLabel}</p>
             </div>
-            <ConnectionPill connected={connected} />
+            {!connected ? <OfflinePill /> : null}
           </header>
 
           {error ? (
